@@ -43,7 +43,7 @@ def media_tool(name="ffmpeg"):
 def probe(path):
     result = subprocess.run([media_tool("ffprobe"), "-v", "error", "-show_streams",
                              "-show_format", "-of", "json", str(path)],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, encoding="utf-8", errors="replace")
     return json.loads(result.stdout)
 
 

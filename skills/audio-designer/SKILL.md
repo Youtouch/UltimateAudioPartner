@@ -32,6 +32,8 @@ For ambience and animal calls also read [sound-without-hearing.md](references/so
 
 Read [mix-plan.md](references/mix-plan.md) before rendering anything with more than one layer. Write the cue sheet (layer, file, excerpt, cue time, gain, ducking) first, render, then meter **each stem after gain** and **each stretch of the export**. Levels set by an agent are starting points: name the ones the user must judge.
 
+`mix/mix_check.py stems --voice V --music M [--bed B] [--sfx S ...] [--mix FINAL]` meters those stems against mix-plan.md (voice and master loudness, music and bed gaps under speech, ducking, bright beds, effects over words) and `report` prints the cue-sheet rows. Stems must be aligned at zero with gains baked in. Its speech windows come from an energy gate, not a voice detector, and a PASS is a measurement, not a listen.
+
 ## Hand off
 
 Per sound: file, excerpt, role, the three kinds of evidence (labels with probabilities, key measurements, any past verdict), gain and cue time, and **listening pending**. After the user listens, record the verdict and its reason in the project profile, so the next choice starts from it.
