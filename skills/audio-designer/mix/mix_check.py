@@ -246,8 +246,9 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
         tolerance = THRESHOLDS["coverage"]["tolerance_s"]
         delta = row["duration_s"] - v["row"]["duration_s"]
         coverage = float(weights.sum()) / float(c.sum()) * 100
-        add(row, key + ".coverage", coverage, "%", "FAIL" if delta < -tolerance else "WARN" if delta > tolerance else "PASS",
-            "coverage", "Continuous layer should cover the voice timeline; excess tail is WARN; no implicit padding/looping.")
+        short = "FAIL" if key == "music" else "WARN"  # music going silent is a known failure; a bed may be placed spots
+        add(row, key + ".coverage", coverage, "%", short if delta < -tolerance else "WARN" if delta > tolerance else "PASS",
+            "coverage", "Music must cover the voice timeline (FAIL); a bed that stops early WARNs (spots, or a truncated file?); excess tail is WARN.")
         add(row, key + ".level_on", on_level, "dB K-weighted", "INFO", "gate",
             "Level in shared voice-active windows; reference measurement, no absolute plan target.")
         rule = "music_gap" if key == "music" else "bed_gap"

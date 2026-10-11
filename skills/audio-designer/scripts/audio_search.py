@@ -115,11 +115,13 @@ class Index:
         with (self.root / 'AUDIO_TAGS.csv').open(encoding='utf-8', newline='') as f:
             for r in csv.DictReader(f):
                 tags[r['relative_path']] = r  # last row wins
-        packs = {}
+        packs, seconds = {}, {}
         ledger = self.root / 'AUDIO_LEDGER_files.csv'
         if ledger.exists():
             with ledger.open(encoding='utf-8-sig', newline='') as f:
-                packs = {r['relative_path']: r.get('pack', '') for r in csv.DictReader(f)}
+                ledger_rows = list(csv.DictReader(f))
+            packs = {r['relative_path']: r.get('pack', '') for r in ledger_rows}
+            seconds = {r['relative_path']: float(r.get('duration_seconds') or 0) for r in ledger_rows}
         audio = np.fromfile(self.root / 'AUDIO_TAGS_clap.f32', '<f4')
         audio = audio[:len(audio) // DIM * DIM].reshape(-1, DIM)
         self.paths, self.names, rows = [], [], []
@@ -134,6 +136,8 @@ class Index:
         self.rows = np.array(rows)  # each file's row in AUDIO_TAGS_clap.f32
         self.labels = [dict((k, float(v)) for k, v in PAIR.findall(tags[p]['top_labels'])) for p in self.paths]
         self.silence = np.array([float(tags[p]['silence'] or 0) for p in self.paths])
+        self.label_text = [tags[p]['top_labels'] + ' ' + tags[p].get('timeline', '') for p in self.paths]
+        self.seconds = np.array([seconds.get(p, 0.0) for p in self.paths])
         self.name_vectors = self._name_vectors()
 
     def _name_vectors(self):
@@ -207,6 +211,38 @@ class Index:
                 for i in best], wanted
 
 
+def like_score(approved, rejected):
+    """Mean similarity to the approved examples, less half of any lead the closest rejected one has over it."""
+    return approved - 0.5 * np.maximum(0, rejected - approved)
+
+
+def like(index, approved, rejected=(), avoid=None, min_seconds=0, top=20):
+    """Files that sound like the approved examples and unlike the rejected ones (path substrings), by audio vector.
+    `avoid` drops any file whose path or labels (any analysed window) match the regex: a missing label is not an absence,
+    so name the words too (Voice, Lyric, Vocal)."""
+    pick = lambda subs: [i for i, p in enumerate(index.paths) if any(s.lower() in p.lower() for s in subs)]
+    a, r = pick(approved), pick(rejected)
+    if not a:
+        raise SystemExit('no library file matches the approved examples: ' + ', '.join(approved))
+    sim_a = index.audio @ index.audio[a].T
+    score = like_score(sim_a.mean(axis=1), (index.audio @ index.audio[r].T).max(axis=1) if r else np.zeros(len(index.paths)))
+    skip = set(a) | set(r)
+    pattern = re.compile(avoid, re.I) if avoid else None
+    out, seen = [], set()
+    for i in np.argsort(-score):
+        base = index.paths[i].rsplit('/', 1)[-1].rsplit('.', 1)[0].lower()  # a WAV and its MP3 copy are one result
+        if i in skip or base in seen or index.seconds[i] < min_seconds:
+            continue
+        if pattern and (pattern.search(index.label_text[i]) or pattern.search(index.paths[i])):
+            continue
+        seen.add(base)
+        out.append({'path': index.paths[i], 'score': round(float(score[i]), 3), 'approved': round(float(sim_a[i].mean()), 3),
+                    'seconds': round(float(index.seconds[i]), 1), 'labels': index.label_text[i].split(' 0-')[0][:120]})
+        if len(out) == top:
+            break
+    return out
+
+
 def check():
     pack = [f'FL_GFX_{kind}_{n}.wav' for kind in ('UI_Click', 'Magic_Spell', 'Coin_Drop', 'Door_Slam') for n in range(3)]
     cleaned = drop_pack_constants([clean_name('Ultimate/' + f, 'Ultimate') for f in pack], ['Ultimate'] * len(pack))
@@ -224,6 +260,8 @@ def check():
     two = 2 / (RRF_K + 1)
     one = 1 / (RRF_K + 0)
     assert two > one
+    # like: closer to the approved wins; a file nearer a rejected example than the approved loses half that lead.
+    assert like_score(.7, .5) == .7 and abs(like_score(.6, .9) - .45) < 1e-9 and like_score(.6, .9) < like_score(.5, .4)
     print('PASS audio_search check: names cleaned, stems, fusion favours agreement')
 
 
@@ -236,6 +274,13 @@ def main():
     f.add_argument('query')
     f.add_argument('--root', type=Path, required=True)
     f.add_argument('--top', type=int, default=20)
+    k = sub.add_parser('like', help='sounds like the approved examples, unlike the rejected ones')
+    k.add_argument('--root', type=Path, required=True)
+    k.add_argument('--approved', nargs='+', required=True, help='path substrings of approved files')
+    k.add_argument('--rejected', nargs='*', default=[])
+    k.add_argument('--avoid', help='regex over file paths and labels in every window, e.g. "Choir|Sing|Speech|Organ|Voice|Lyric|Vocal"')
+    k.add_argument('--min-seconds', type=float, default=0)
+    k.add_argument('--top', type=int, default=20)
     sub.add_parser('check')
     a = parser.parse_args()
     if a.cmd == 'check':
@@ -243,6 +288,8 @@ def main():
     index = Index(a.root)
     if a.cmd == 'names':
         return print(f'{len(index.names)} names embedded, cache at {a.root / "AUDIO_NAMES_clap.npz"}')
+    if a.cmd == 'like':
+        return print(json.dumps(like(index, a.approved, a.rejected, a.avoid, a.min_seconds, a.top), indent=1))
     results, wanted = index.find(a.query, a.top)
     print(json.dumps({'labels_used': wanted, 'results': results}, indent=1))
 

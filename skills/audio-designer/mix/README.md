@@ -43,8 +43,8 @@ input file. Final mix must be supplied separately; it is not reconstructed.
 
 Voice duration defines the comparison timeline. Music/bed comparisons use only
 actual shared samples, including a correctly weighted last partial frame.
-Short continuous stems fail coverage beyond 0.1 s tolerance, rather than being
-silently padded. Longer tails are WARN; they are fully metered for LUFS/peak
+Short music fails coverage beyond 0.1 s tolerance and a short bed warns, rather
+than either being silently padded. Longer tails are WARN; they are fully metered for LUFS/peak
 but excluded from voice-window comparisons. Effect files may end earlier.
 
 ## What the measurements mean
@@ -69,7 +69,7 @@ use displayed 0.1 dB precision to avoid a rounded 30.0 receiving a boundary WARN
 | duck | Music level_off minus level_on. INFO: the gap during speech is the requirement and ducking one way to hold it; the approved shorts dip about 3 LU. Unavailable without usable pauses. |
 | brightness | Bed spectral energy above 3.5 kHz (unweighted), as a percentage. INFO: K-weighting already counts the highs louder, and an approved cricket bed (77%) sat 32 LU under. |
 | lra | Bed whole-file EBU loudness range in LU. WARN >=18, otherwise PASS. Short clips can substantially understate bursts; this is not a burst locator. |
-| coverage | Actual common music/bed duration divided by voice duration. Missing more than 0.1 s fails; excess tail warns. Missing content inside an otherwise full-length file is not detected by coverage. |
+| coverage | Actual common music/bed duration divided by voice duration. Music missing more than 0.1 s fails (an export once went out with its music silent for the last third); a bed that stops early warns, since spot ambience can be placed on purpose; excess tail warns. Missing content inside an otherwise full-length file is not detected by coverage. |
 | peak_gap | Voice true peak minus each effect's true peak. PASS 6-14 dB; WARN 3-<6 or >14; FAIL <3. An approved owl call: 9.0; a reference monkey call: 7.2. |
 | overlap | Seconds of effect energy-gate activity overlapping voice activity. FAIL beyond one 0.1 s frame (the gate's edge). Game/UI sounds may intentionally overlap; pass only calls and stingers here. |
 

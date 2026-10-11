@@ -60,6 +60,8 @@ python scripts/audio_tag.py check
 
 **Searching by words.** The sound word of a query leads: in "a single soft wooden click" it is "click", and "soft" or "wooden" only refine. Describing words alone pull toward the wrong files ("soft" finds near-silence), so write the sound first. `audio_search.py names` caches each cleaned file name's text vector in `AUDIO_NAMES_clap.npz` beside the tags; it updates itself for new names.
 
+**Searching by example.** When the user has approved or rejected sounds, `audio_search.py like --root <library> --approved <path part> ... --rejected <path part> ... --avoid "Choir|Sing|Speech|Organ|Voice|Lyric" --min-seconds 60` ranks the library by audio closeness to what was approved, penalises closeness to what was rejected, and drops any file whose name or labels match `--avoid`. A verdict is the strongest evidence there is: start a pick from it rather than from words.
+
 **Studio tags with agreement.** `tagging/vocab_tags.py build --root <library>` writes `AUDIO_VOCAB_TAGS.csv`: per file and canonical tag, which sources support it (name, model label, audio). Two or more sources make a tag worth stating; one source is a candidate to verify, never a fact. `disagreements` lists the files where sources contradict each other: offer those for a listen before anything else. Rebuild it after a tagging or relabel pass.
 
 **Judging a change to search or tagging.** `bench/` holds a reviewed-clip benchmark and `bench_eval.py`: run a method against it before and after, on the dev split while tuning and on test once. Until the clips are reviewed by ear it scores against file names (PROXY), which flatters name-based methods; say so with any number.
