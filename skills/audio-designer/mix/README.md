@@ -59,22 +59,22 @@ use displayed 0.1 dB precision to avoid a rounded 30.0 receiving a boundary WARN
 
 | Measurement | Meaning / assessment |
 |---|---|
-| integrated | Whole supplied file, FFmpeg ebur128 integrated LUFS, with its normal gates. Voice/final: target -16, PASS within 1 LU, WARN within 2, FAIL beyond. Music/bed/effects have no absolute target in the plan, so their LUFS are labelled WARN/reference; assess relative gaps. |
+| integrated | Whole supplied file, FFmpeg ebur128 integrated LUFS, with its normal gates. Voice/final: target -16, PASS within 1 LU, WARN within 2, FAIL beyond. Music/bed/effects have no absolute target, so their LUFS are INFO; the relative gaps are judged. |
 | peak | Whole-file oversampled true peak from ebur128=peak=true, in dBTP. Stems: PASS <=-1.5; WARN above -1.5 but below 0; FAIL >=0. Final: PASS <=-1.5; WARN >-1.5 through -1.0; FAIL >-1.0. Lower peaks pass; the ceiling is not a peak to aim for. |
-| gate / pauses | Seconds of voice-stem activity/inactivity. Non-overlapping 100 ms mean channel-power frames; threshold is max(-55 dBFS, 95th percentile of nonzero frame levels minus 18 dB). Need 0.4 s activity; otherwise voice gate FAIL. Need 0.4 s pauses to assess ducking; otherwise WARN/unavailable. |
-| gate_threshold / active_level | Heuristic gate threshold and active voice broadband RMS reference. WARN/reference because the plan sets no absolute RMS target. |
-| level_on / level_off | Layer broadband RMS dBFS in the shared active/pause windows. Energy and sample counts are pooled before conversion to dB; this is not an average of logarithmic levels. WARN/reference. |
-| gap_on | Voice RMS minus layer RMS during active voice windows. Positive means layer is quieter. Music: PASS 15-20 dB; WARN 13-<15 or >20; FAIL <13. Dark bed: PASS >=30; WARN 27-<30; FAIL <27. Bright bed: PASS >=33; WARN 30-<33; FAIL <30. |
-| gap_off | ACTIVE voice RMS reference minus music RMS in pauses. Using actual silent-voice RMS would produce a meaningless comparison. No outside-speech target appears in the plan, so WARN/reference; compare with gap_on. |
-| duck | Music level_off minus level_on; also gap_on minus gap_off. Positive means quieter under voice. PASS >=3 dB; WARN >1 to <3; FAIL <=1. No usable pauses/activity/silent comparison: WARN n/a. These depth boundaries are local policy; the plan specifies ducking but no minimum depth. |
-| brightness | Bed spectral energy above 3.5 kHz, as a percentage, summed across channel powers. The shared Hann-window FFT band helper supplies this. >50% means "most": WARN bright and apply the additional 3 dB gap policy. Otherwise PASS. A brightness WARN remains even when its stricter gap passes. |
+| gate / pauses | Seconds of voice-stem activity/inactivity. Non-overlapping 100 ms K-weighted mean channel-power frames; threshold is max(-55 dB, 95th percentile of nonzero frame levels minus 18 dB). Need 0.4 s activity; otherwise voice gate FAIL. Need 0.4 s pauses to measure ducking. |
+| gate_threshold / active_level | Gate threshold and active voice K-weighted level. INFO: the plan sets no absolute target. |
+| level_on / level_off | Layer K-weighted level in the shared active/pause windows. Energy and sample counts are pooled before conversion to dB. INFO. |
+| gap_on | Voice minus layer, K-weighted (the LUFS filter), during active voice windows, in LU. Positive means the layer is quieter. Music: PASS 6-20; WARN 4-<6 or >20; FAIL <4. Bed: PASS >=30; WARN 26-<30; FAIL <26. Calibrated on two narrated shorts a listener approved (music 7.6 and 7.4, beds 35.5 and 31.9). |
+| gap_off | ACTIVE voice reference minus music in pauses. INFO; compare with gap_on. |
+| duck | Music level_off minus level_on. INFO: the gap during speech is the requirement and ducking one way to hold it; the approved shorts dip about 3 LU. Unavailable without usable pauses. |
+| brightness | Bed spectral energy above 3.5 kHz (unweighted), as a percentage. INFO: K-weighting already counts the highs louder, and an approved cricket bed (77%) sat 32 LU under. |
 | lra | Bed whole-file EBU loudness range in LU. WARN >=18, otherwise PASS. Short clips can substantially understate bursts; this is not a burst locator. |
 | coverage | Actual common music/bed duration divided by voice duration. Missing more than 0.1 s fails; excess tail warns. Missing content inside an otherwise full-length file is not detected by coverage. |
-| peak_gap | Voice true peak minus each effect's true peak. PASS 10-14 dB; WARN 8-<10 or >14; FAIL <8. |
-| overlap | Seconds of effect energy-gate activity overlapping voice activity. Any overlap FAILS the plan's spot-call/stinger pause rule. Game/UI sounds may intentionally overlap; this CLI cannot infer that role. |
+| peak_gap | Voice true peak minus each effect's true peak. PASS 6-14 dB; WARN 3-<6 or >14; FAIL <3. An approved owl call: 9.0; a reference monkey call: 7.2. |
+| overlap | Seconds of effect energy-gate activity overlapping voice activity. FAIL beyond one 0.1 s frame (the gate's edge). Game/UI sounds may intentionally overlap; pass only calls and stingers here. |
 
-WARN can mean "reference only", an unavailable comparison, a borderline result,
-or a real caution such as brightness. Read the explanation in stems; it names
+INFO is a reference measurement with no target. WARN is a borderline result or
+an unavailable comparison. Read the explanation in stems; it names
 the reason and plan source for every metric. No unsupported absolute target is
 invented for music, bed or effect integrated LUFS. Every measured number in the
 cue-sheet table carries its status; cue timing is metadata, not a level test.
@@ -84,16 +84,15 @@ cue-sheet table carries its status; cue timing is metadata, not a level test.
 - The energy gate is NOT a voice detector. Noise, breaths, sustained tones and
   leaked music can open it; quiet words can be missed. Its short frames are an
   energy gate, not EBU short-term LUFS. It has no speech recognition.
-- Relative gaps are broadband RMS dB, not LUFS differences and not a model of
-  perceptual masking. Frequency carving, actual intelligibility and listening
+- Relative gaps are K-weighted (BS.1770 filter, ungated), not differences of
+  integrated LUFS and not a model of perceptual masking. Frequency carving, actual intelligibility and listening
   remain pending. Summing channel powers avoids antiphase stereo cancellation.
 - A measured inside/outside difference is evidence consistent with ducking.
   Natural music dynamics or arrangement changes can produce the same number.
   Compression ratio, attack and release cannot be inferred. Pause edges/release
   tails and the 100 ms grid can bias the comparison.
 - Integrated LUFS uses the WHOLE stem and FFmpeg's EBU gating, while relative
-  gaps use only active voice windows and no EBU gating. They can disagree,
-  especially for bright beds. EBU values at/below its -70 LUFS absolute gate
+  gaps use only active voice windows and no EBU gating. They can disagree. EBU values at/below its -70 LUFS absolute gate
   are shown as n/a/WARN, never as a trusted -70 measurement. Silence/non-finite
   comparisons never turn into infinite "good" gaps.
 - Decoding resamples analysis to 48 kHz and loads one whole stem at a time into

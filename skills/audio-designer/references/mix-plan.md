@@ -8,11 +8,11 @@ Write the plan before rendering. Most mix failures so far were planning failures
 |---|---|---|---|
 | Voice | Meaning | 1, never masked | Reference: about -16 LUFS integrated |
 | Game / UI sound | Proof that the action happened | 2 on its action | Measure; keep taps audible, not punchy enough to startle |
-| Effect / spot call | Punctuation | 2, in a voice pause | Peak about 10-14 dB under the voice's peaks |
-| Music | Shape and energy | 3; lead only in voiceless adverts | Under voice: about 15-20 dB under; ducked further while speech plays |
-| Ambience bed | Place | 4, under everything | About 30 dB under the voice (-47 LUFS against a -16 LUFS voice in an accepted narrated short); bright beds lower still |
+| Effect / spot call | Punctuation | 2, in a voice pause | Peak about 6-14 dB under the voice's peaks (an approved owl call: 9; a reference monkey call: 7) |
+| Music | Shape and energy | 3; lead only in voiceless adverts | Under voice, during speech: about 7-8 LU in two narrated shorts a listener approved. Common practice for dense dialogue sits lower (10-20); calm pads tolerate less gap |
+| Ambience bed | Place | 4, under everything | About 30 LU or more under the voice during speech (approved: 35.5 and 31.9). In the cutter that is the bed at about -47 LUFS before the final loudnorm |
 
-The starting levels come from measured mixes a listener accepted, and from common practice; they are not standards. Meter the actual stem after gain; the listener's ear moves them. A project profile's own levels win.
+The starting levels come from measured mixes a listener accepted, and from common practice; they are not standards. Gaps are K-weighted (the LUFS filter) levels during speech, which is what `mix/mix_check.py` measures: plain RMS reads beds about 10 dB quieter and music about 4 dB quieter than this. Meter the actual stem after gain; the listener's ear moves them. A project profile's own levels win.
 
 **Voiceless advert:** music leads, game sounds sit over it on their actions, nothing else. **Narrated short:** voice leads, one bed, music optional and low, one call per joke at most.
 
@@ -24,10 +24,10 @@ The starting levels come from measured mixes a listener accepted, and from commo
 
 ## Keep the voice clear
 
-- **Duck by sidechain.** Music and bed duck under voice (`sidechaincompress`, about 4:1 to 8:1 for music, 8:1 for beds, attack about 10-20 ms, release about 250-400 ms so it does not pump between words). Starting values: listen-check them.
+- **Duck by sidechain.** The requirement is the gap during speech; ducking is how to hold it without burying the music in the pauses. The approved shorts dip the music about 3 LU between speech and pauses. The approved cutter's settings: music 3:1, threshold about 3.8 dB under the voice's integrated LUFS, attack 20 ms, release 400 ms; beds 8:1, threshold about 13.3 dB under, attack 10 ms, release 350 ms (`sidechaincompress`; `render/render_mix.py` uses exactly these). A threshold is an absolute level: keep it relative to the voice, or a hotter voice ducks harder. Deeper ducking (lower threshold, 6:1 and up on music) pumps between words.
 - **Pad the key.** `sidechaincompress` stops when its key ends: pad it (`apad=whole_dur=TOTAL`). Unpadded, one export went out with the music silent for its last third.
 - **Carve frequencies, not only gain.** High-pass a bed at about 120-150 Hz under a voice; if music still competes, a gentle 2-4 dB dip around 2-4 kHz on the music while voice plays. Compare the voice's and bed's band shares (`audio_index.py show`): two layers peaking in the same band mask each other.
-- **Bright beds** (most energy above 3.5 kHz: insects, crickets, rain) read louder than their LUFS. Lower them further.
+- **Bright beds** (most energy above 3.5 kHz: insects, crickets, rain) read louder than plain RMS says; LUFS already counts that (an approved cricket bed, 77% bright, sat 32 LU under). Measure in LUFS, not RMS, and no extra allowance is needed.
 - **Bursts in a bed** (LRA near 18) collide with lines. Map the bursts and cap them, or move the bed.
 
 ## Place effects

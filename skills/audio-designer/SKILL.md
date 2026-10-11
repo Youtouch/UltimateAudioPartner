@@ -32,7 +32,9 @@ For ambience and animal calls also read [sound-without-hearing.md](references/so
 
 Read [mix-plan.md](references/mix-plan.md) before rendering anything with more than one layer. Write the cue sheet (layer, file, excerpt, cue time, gain, ducking) first, render, then meter **each stem after gain** and **each stretch of the export**. Levels set by an agent are starting points: name the ones the user must judge.
 
-`mix/mix_check.py stems --voice V --music M [--bed B] [--sfx S ...] [--mix FINAL]` meters those stems against mix-plan.md (voice and master loudness, music and bed gaps under speech, ducking, bright beds, effects over words) and `report` prints the cue-sheet rows. Stems must be aligned at zero with gains baked in. Its speech windows come from an energy gate, not a voice detector, and a PASS is a measurement, not a listen.
+`mix/mix_check.py stems --voice V --music M [--bed B] [--sfx S ...] [--mix FINAL]` meters those stems against mix-plan.md (voice and master loudness; music, bed and call levels against the voice during speech, in LU, calibrated on the mixes the user approved; effects over words) and `report` prints the cue-sheet rows. Stems must be aligned at zero with gains baked in. Its speech windows come from an energy gate, not a voice detector, and a PASS is a measurement, not a listen.
+
+`render/render_mix.py render CUE.csv --out DIR` renders a cue sheet (layer, file, excerpt, cue in/out, gain, duck ratio, high/low-pass, fades; format in `render/README.md`) into aligned stems and a loudness-normalised `final.wav`, ducking with the approved shorts' settings, then runs the checker and writes `cue_report.md`. It exits non-zero on any FAIL. Render with it rather than hand-writing an ffmpeg graph.
 
 ## Hand off
 

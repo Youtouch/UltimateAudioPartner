@@ -13,16 +13,25 @@ import sys
 from pathlib import Path
 
 PUBLISH_TAGGING = {'vocab_tags.py', 'self_tests.py', 'label_rules.py', 'label_self_tests.py', 'label_decisions_v2.json', 'vocabulary_synonyms.csv'}
+PUBLISH_RENDER = {'render_mix.py', 'render_tests.py', 'README.md'}
 PUBLISH_MIX = {'mix_check.py', 'README.md'}
 PUBLISH_BENCH = {'bench_select.py', 'bench_eval.py', 'bench_clap.py', 'methods.py', 'tagger_trial.py', 'README.md', 'vocabulary.csv', 'queries.csv'}
 
 
+# A new folder in the live skill (an experiment, a pilot with library paths) stays private until named here.
+PUBLISH_ROOT = {'SKILL.md', 'references', 'scripts', 'bench', 'tagging', 'mix', 'render'}
+
+
 def ignore(folder, names):
     out = {n for n in names if n == '__pycache__'}
+    if Path(folder).name == 'audio-designer':
+        out |= {n for n in names if n not in PUBLISH_ROOT}
     if Path(folder).name == 'bench':
         out |= {n for n in names if n not in PUBLISH_BENCH}
     if Path(folder).name == 'tagging':
         out |= {n for n in names if n not in PUBLISH_TAGGING}
+    if Path(folder).name == 'render':
+        out |= {n for n in names if n not in PUBLISH_RENDER}
     if Path(folder).name == 'mix':
         out |= {n for n in names if n not in PUBLISH_MIX}
     return out
@@ -43,7 +52,7 @@ def main():
     # (audio_tag.py check is left out: it loads both models and takes minutes; run it by hand after tagger changes.)
     failed = []
     for script, cmd in [('scripts/audio_search.py', 'check'), ('scripts/audio_index.py', 'check'),
-                        ('bench/bench_eval.py', 'check'), ('bench/tagger_trial.py', 'check'), ('tagging/vocab_tags.py', 'check'), ('mix/mix_check.py', 'check')]:
+                        ('bench/bench_eval.py', 'check'), ('bench/tagger_trial.py', 'check'), ('tagging/vocab_tags.py', 'check'), ('mix/mix_check.py', 'check'), ('render/render_mix.py', 'check')]:
         if (dst / script).exists():
             run = subprocess.run([sys.executable, '-B', script, cmd], cwd=dst, capture_output=True, text=True)
             print(f'{"PASS" if run.returncode == 0 else "FAIL"} {script} {cmd}')
