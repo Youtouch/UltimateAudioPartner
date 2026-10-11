@@ -8,6 +8,8 @@ holds data drawn from the user's own library (paths, snapshots, scores): only it
 
 import argparse
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 PUBLISH_TAGGING = {'vocab_tags.py', 'self_tests.py', 'vocabulary_synonyms.csv'}
@@ -34,6 +36,21 @@ def main():
     for p in sorted(dst.rglob('*')):
         if p.is_file():
             print(p.relative_to(dst).as_posix())
+    # Another agent may be mid-edit in the live skill: a copied half-change shows up as a failing self-test here.
+    # (audio_tag.py check is left out: it loads both models and takes minutes; run it by hand after tagger changes.)
+    failed = []
+    for script, cmd in [('scripts/audio_search.py', 'check'), ('scripts/audio_index.py', 'check'),
+                        ('bench/bench_eval.py', 'check'), ('bench/tagger_trial.py', 'check'), ('tagging/vocab_tags.py', 'check')]:
+        if (dst / script).exists():
+            run = subprocess.run([sys.executable, '-B', script, cmd], cwd=dst, capture_output=True, text=True)
+            print(f'{"PASS" if run.returncode == 0 else "FAIL"} {script} {cmd}')
+            if run.returncode:
+                failed.append(script)
+                print((run.stdout + run.stderr)[-800:])
+    for cache in dst.rglob('__pycache__'):
+        shutil.rmtree(cache)
+    if failed:
+        sys.exit(f'Self-tests failed in the copy: {", ".join(failed)}. Do not commit; is someone still editing the live skill?')
 
 
 if __name__ == '__main__':
