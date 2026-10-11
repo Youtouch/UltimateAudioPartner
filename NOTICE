@@ -1,0 +1,9 @@
+Ultimate Audio Partner
+Copyright 2026 Youtouch
+
+This product includes software developed by Youtouch, licensed under the Apache License, Version 2.0.
+
+Models downloaded at runtime (not distributed with this repository):
+- MIT/ast-finetuned-audioset-10-10-0.4593 (Audio Spectrogram Transformer, BSD-3-Clause)
+- laion/clap-htsat-unfused (LAION CLAP, Apache-2.0)
+Each is fetched from Hugging Face under its own licence on first use.

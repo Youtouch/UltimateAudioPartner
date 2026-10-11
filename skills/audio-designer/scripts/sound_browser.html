@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Browser</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --line: #e2dfd8; --text: #1d1c1a; --muted: #625e57;
+  --accent: #2f6f5e; --accent-soft: #dcebe6; --accent-text: #ffffff; --bad: #a3392f; --bad-soft: #f5dfdc;
+  --chip: #efede8; --seg: #2f6f5e; --hit: #c27c0e; --focus: #1f5fbf;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #151614; --panel: #1e1f1c; --line: #33352f; --text: #ecebe6; --muted: #a8a59c;
+    --accent: #6cc4a8; --accent-soft: #23392f; --accent-text: #0f1a16; --bad: #ec8b80; --bad-soft: #3c2421;
+    --chip: #2a2b27; --seg: #6cc4a8; --hit: #f0b44c; --focus: #8ab4ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif;
+  height: 100vh; display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: 290px 1fr; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button, input, select { font: inherit; color: inherit; }
+header { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; padding: 10px 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0 8px 0 0; font-weight: 650; }
+.field { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+#q { flex: 1 1 200px; } #describe { flex: 2 1 300px; }
+.btn { background: var(--chip); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: default; }
+#status { color: var(--muted); font-size: 12px; margin-left: auto; }
+aside { overflow-y: auto; padding: 14px 16px; border-right: 1px solid var(--line); background: var(--panel); }
+aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 8px; }
+aside h2:first-child { margin-top: 0; }
+.seg-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.toggle { display: flex; gap: 8px; align-items: center; margin: 6px 0; cursor: pointer; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--chip); border: 1px solid transparent;
+  border-radius: 999px; padding: 2px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.chip[aria-pressed="true"], .chip.on { background: var(--accent); color: var(--accent-text); }
+.chip small { color: inherit; opacity: .7; }
+#facets .chip { margin: 0 4px 6px 0; }
+.row2 { display: flex; gap: 8px; align-items: center; }
+.row2 .field { width: 100%; }
+main { overflow-y: auto; padding: 0 16px 16px; }
+.bar { position: sticky; top: 0; background: var(--bg); padding: 10px 0; display: flex; gap: 10px; align-items: center;
+  z-index: 1; flex-wrap: wrap; }
+#selected .chip { background: var(--accent); color: var(--accent-text); }
+#count { color: var(--muted); }
+.list { display: flex; flex-direction: column; gap: 6px; }
+.item { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+  display: grid; grid-template-columns: 36px 1fr auto; gap: 4px 10px; align-items: center; cursor: pointer; }
+.item.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.item.like { background: linear-gradient(90deg, var(--accent-soft), var(--panel) 40%); }
+.item.reject { opacity: .55; }
+.play { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-text);
+  display: grid; place-items: center; cursor: pointer; grid-row: span 2; }
+.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.icon { width: 32px; height: 32px; border-radius: 8px; border: 1px solid transparent; background: transparent;
+  display: grid; place-items: center; cursor: pointer; color: var(--muted); }
+.icon:hover { background: var(--chip); color: var(--text); }
+.icon.on-like { color: var(--accent); } .icon.on-reject { color: var(--bad); }
+.tags { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.tags .chip { padding: 0 8px; }
+.strip { grid-column: 2 / -1; display: flex; gap: 2px; height: 10px; position: relative; }
+.strip span { flex: 1; background: var(--seg); border-radius: 2px; cursor: pointer; }
+.strip span.hit { background: var(--hit); }
+.strip .head { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); pointer-events: none; }
+.score { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; font-size: 12px; }
+.dur { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; min-width: 44px; text-align: right; }
+footer { grid-column: 1 / -1; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 16px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 2fr) minmax(0, 1fr); gap: 12px; align-items: center; }
+#now { overflow: hidden; } #now .name { font-size: 13px; }
+audio { width: 100%; height: 36px; }
+#note { width: 100%; }
+.empty { color: var(--muted); padding: 40px 0; text-align: center; }
+.keys { color: var(--muted); font-size: 12px; line-height: 1.7; }
+kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font: 11px ui-monospace, monospace; }
+#toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#toast.show { opacity: 1; }
+@media (max-width: 800px) {
+  body { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr auto; }
+  aside { max-height: 35vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  footer { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sound Browser</h1>
+  <input id="q" class="field" type="search" placeholder="Filter by name or folder" aria-label="Filter by name or folder">
+  <input id="describe" class="field" type="search" placeholder="Describe a sound: soft wooden click, birds at dawn, calm piano…" aria-label="Describe a sound">
+  <button id="go" class="btn primary">Find</button>
+  <span id="status">Loading…</span>
+  <button id="reload" class="btn" title="Re-read the tag files (the tagging pass may still be adding rows)">Reload</button>
+</header>
+
+<aside>
+  <h2>Kind</h2>
+  <div class="seg-group" id="buckets"></div>
+  <h2>Pack</h2>
+  <div class="row2"><input id="pack" class="field" list="packs" placeholder="Any pack" aria-label="Pack"></div>
+  <datalist id="packs"></datalist>
+  <h2>Length (seconds)</h2>
+  <div class="row2">
+    <input id="dmin" class="field" type="number" min="0" step="0.5" placeholder="min" aria-label="Minimum length">
+    <input id="dmax" class="field" type="number" min="0" step="0.5" placeholder="max" aria-label="Maximum length">
+  </div>
+  <h2>Show</h2>
+  <label class="toggle"><input type="checkbox" id="novoice"> No voices (speech, choir, chant, singing)</label>
+  <label class="toggle"><input type="checkbox" id="tagged"> Tagged files only</label>
+  <label class="toggle"><input type="checkbox" id="liked"> Liked only</label>
+  <label class="toggle"><input type="checkbox" id="hiderej" checked> Hide rejected</label>
+  <h2>Tag strength <span id="strengthv"></span></h2>
+  <input id="strength" type="range" min="0.1" max="0.9" step="0.05" value="0.3" style="width:100%" aria-label="Tag strength">
+  <h2>Tags in these results</h2>
+  <input id="tagq" class="field" type="search" placeholder="Find a tag (bird, whoosh, piano…)" style="width:100%;margin-bottom:8px" aria-label="Find a tag">
+  <div id="facets"></div>
+  <h2>Keys</h2>
+  <div class="keys"><kbd>↓</kbd><kbd>↑</kbd> next / previous and play · <kbd>Space</kbd> play / pause ·
+    <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>L</kbd> like · <kbd>X</kbd> reject · <kbd>M</kbd> more like this · <kbd>C</kbd> copy path</div>
+</aside>
+
+<main>
+  <div class="bar">
+    <span id="count"></span>
+    <span id="selected"></span>
+    <span style="margin-left:auto"></span>
+    <label>Sort <select id="sort" class="field">
+      <option value="name">Name</option><option value="score">Match</option><option value="tag">Tag strength</option>
+      <option value="short">Shortest</option><option value="long">Longest</option></select></label>
+  </div>
+  <div class="list" id="list"></div>
+  <div id="more"></div>
+</main>
+
+<footer>
+  <div id="now"><div class="name">Nothing playing</div><div class="sub">Click a row or press ↓</div></div>
+  <audio id="audio" controls preload="none"></audio>
+  <div class="row2">
+    <input id="note" class="field" placeholder="Note on this sound (saved with like / reject)" aria-label="Note">
+    <label class="toggle" title="Play the next row when one ends"><input type="checkbox" id="autonext"> Auto</label>
+  </div>
+</footer>
+<div id="toast" role="status"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const VOICE = ['Speech', 'Choir', 'Chant', 'Mantra', 'Singing', 'Vocal music', 'Male singing', 'Female singing',
+  'Child singing', 'Humming', 'Rapping', 'Narration, monologue', 'Conversation'];
+const ICON = {
+  play: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>',
+  pause: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2h3v12H4zM9 2h3v12H9z"/></svg>',
+  like: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 2h10v12l-5-3.5L3 14z"/></svg>',
+  likeOn: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3 2h10v12l-5-3.5L3 14z"/></svg>',
+  reject: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
+  similar: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="6" cy="8" r="3.5"/><circle cx="10.5" cy="8" r="3.5"/></svg>',
+  folder: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v8h-13z"/></svg>',
+  copy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V2H2v9h3"/></svg>',
+};
+let D = null, verdicts = {}, filtered = [], shown = 0, current = -1, scores = null, scoreLabel = '';
+const state = { bucket: '', tags: [] };
+const audio = $('#audio');
+
+function toast(text) { const t = $('#toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200); }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const fmt = s => s == null ? '' : s < 60 ? s.toFixed(1) + ' s' : Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+const labelsOf = r => { const out = []; for (let i = 0; i < r[6].length; i += 2) out.push([D.labels[r[6][i]], r[6][i + 1]]); return out; };
+const labelScore = (r, name) => { const id = D.labelIndex[name]; for (let i = 0; i < r[6].length; i += 2) if (r[6][i] === id) return r[6][i + 1]; return 0; };
+
+async function load() {
+  $('#status').textContent = 'Loading…';
+  const res = await fetch('/api/data'); D = await res.json();
+  D.labelIndex = Object.fromEntries(D.labels.map((n, i) => [n, i]));
+  verdicts = D.verdicts;
+  const packs = [...new Set(D.rows.map(r => r[1]))].sort();
+  $('#packs').innerHTML = packs.map(p => `<option value="${esc(p)}">`).join('');
+  const buckets = [...new Set(D.rows.map(r => r[2]).filter(Boolean))].sort();
+  $('#buckets').innerHTML = ['', ...buckets].map(b =>
+    `<button class="chip" data-b="${esc(b)}" aria-pressed="${b === state.bucket}">${b || 'All'}</button>`).join('');
+  $('#status').textContent = `${D.tagged.toLocaleString()} of ${D.total.toLocaleString()} files tagged`;
+  apply();
+}
+
+function apply() {
+  const q = $('#q').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const pack = $('#pack').value.trim(), dmin = parseFloat($('#dmin').value), dmax = parseFloat($('#dmax').value);
+  const strength = +$('#strength').value, novoice = $('#novoice').checked, tagged = $('#tagged').checked;
+  const liked = $('#liked').checked, hiderej = $('#hiderej').checked;
+  $('#strengthv').textContent = '≥ ' + strength.toFixed(2);
+  const tagIds = state.tags.map(t => D.labelIndex[t]);
+  filtered = [];
+  for (let i = 0; i < D.rows.length; i++) {
+    const r = D.rows[i], v = verdicts[r[0]]?.verdict;
+    if (state.bucket && r[2] !== state.bucket) continue;
+    if (pack && r[1] !== pack) continue;
+    if (!isNaN(dmin) && !(r[3] >= dmin)) continue;
+    if (!isNaN(dmax) && !(r[3] <= dmax)) continue;
+    if (tagged && r[4] == null) continue;
+    if (liked && v !== 'like') continue;
+    if (hiderej && v === 'reject') continue;
+    if (scores && (r[8] < 0 || scores[r[8]] == null)) continue;
+    if (q.length) { const p = r[0].toLowerCase(); if (!q.every(w => p.includes(w))) continue; }
+    if (tagIds.length) {
+      let ok = true;
+      for (const id of tagIds) { let s = 0; for (let k = 0; k < r[6].length; k += 2) if (r[6][k] === id) s = r[6][k + 1]; if (s < strength) { ok = false; break; } }
+      if (!ok) continue;
+    }
+    if (novoice && ((r[4] ?? 0) >= 0.2 || VOICE.some(n => labelScore(r, n) >= 0.2))) continue;
+    filtered.push(i);
+  }
+  const sort = $('#sort').value, R = D.rows;
+  // A match ranks every tagged file; keep the best 300 so the list and the tag counts describe the matches.
+  if (scores) filtered = filtered.sort((a, b) => scores[R[b][8]] - scores[R[a][8]]).slice(0, 300);
+  const tagKey = i => state.tags.length ? Math.min(...state.tags.map(t => labelScore(R[i], t))) : (R[i][6][1] ?? 0);
+  if (sort === 'score' && scores) filtered.sort((a, b) => scores[R[b][8]] - scores[R[a][8]]);
+  else if (sort === 'tag') filtered.sort((a, b) => tagKey(b) - tagKey(a));
+  else if (sort === 'short') filtered.sort((a, b) => (R[a][3] ?? 1e9) - (R[b][3] ?? 1e9));
+  else if (sort === 'long') filtered.sort((a, b) => (R[b][3] ?? 0) - (R[a][3] ?? 0));
+  $('#count').textContent = (scores ? `Best ${filtered.length} matches for ${scoreLabel}` : `${filtered.length.toLocaleString()} sounds`);
+  $('#selected').innerHTML = state.tags.map(t => `<button class="chip" data-untag="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
+    + (scores ? ` <button class="chip" id="clearscore" title="Clear the match">match ×</button>` : '');
+  facets(strength);
+  $('#list').innerHTML = ''; shown = 0; more();
+}
+
+function facets(strength) {
+  const counts = new Map(), tq = $('#tagq').value.trim().toLowerCase();
+  for (const i of filtered) { const r = D.rows[i]; for (let k = 0; k < r[6].length; k += 2) if (r[6][k + 1] >= strength) counts.set(r[6][k], (counts.get(r[6][k]) || 0) + 1); }
+  let list = [...counts].filter(([id]) => !state.tags.includes(D.labels[id]));
+  if (tq) list = list.filter(([id]) => D.labels[id].toLowerCase().includes(tq));
+  list.sort((a, b) => b[1] - a[1]);
+  $('#facets').innerHTML = list.slice(0, 60).map(([id, n]) =>
+    `<button class="chip" data-tag="${esc(D.labels[id])}">${esc(D.labels[id])} <small>${n}</small></button>`).join('')
+    || '<div class="sub">No tags at this strength. Untagged files have none until the tagging pass reaches them.</div>';
+}
+
+function rowHtml(i) {
+  const r = D.rows[i], v = verdicts[r[0]]?.verdict || '', file = r[0].split('/').pop();
+  const folder = r[0].slice(0, r[0].length - file.length - 1);
+  const strength = +$('#strength').value, sel = state.tags.map(t => D.labelIndex[t]);
+  const tags = labelsOf(r).map(([n, s]) => `<button class="chip${state.tags.includes(n) ? ' on' : ''}" data-tag="${esc(n)}" title="${s.toFixed(2)}">${esc(n)} <small>${s.toFixed(2)}</small></button>`).join('');
+  const strip = r[7].map(([start, ids]) => {
+    const top = ids[1] ?? 0, hit = sel.length && sel.some(id => { for (let k = 0; k < ids.length; k += 2) if (ids[k] === id && ids[k + 1] >= strength) return true; return false; });
+    const tip = []; for (let k = 0; k < ids.length; k += 2) tip.push(D.labels[ids[k]] + ' ' + ids[k + 1]);
+    return `<span data-seek="${start}" class="${hit ? 'hit' : ''}" style="opacity:${0.25 + 0.75 * top}" title="${start}s: ${esc(tip.join(', ') || 'nothing above 0.1')}"></span>`;
+  }).join('');
+  return `<div class="item ${v}${i === current ? ' current' : ''}" data-i="${i}">
+    <button class="play" data-act="play" aria-label="Play ${esc(file)}">${i === current && !audio.paused ? ICON.pause : ICON.play}</button>
+    <div style="min-width:0"><div class="name" title="${esc(r[0])}">${esc(file)}</div><div class="sub">${esc(folder)}</div></div>
+    <div class="meta">${scores && r[8] >= 0 ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
+      <span class="dur">${fmt(r[3])}</span>
+      <button class="icon${v === 'like' ? ' on-like' : ''}" data-act="like" aria-label="Like" title="Like (L)">${v === 'like' ? ICON.likeOn : ICON.like}</button>
+      <button class="icon${v === 'reject' ? ' on-reject' : ''}" data-act="reject" aria-label="Reject" title="Reject (X)">${ICON.reject}</button>
+      <button class="icon" data-act="similar" aria-label="More like this" title="More like this (M)"${r[8] < 0 ? ' disabled' : ''}>${ICON.similar}</button>
+      <button class="icon" data-act="reveal" aria-label="Show in Explorer" title="Show in Explorer">${ICON.folder}</button>
+      <button class="icon" data-act="copy" aria-label="Copy path" title="Copy full path (C)">${ICON.copy}</button></div>
+    ${tags ? `<div class="tags">${tags}</div>` : r[4] == null ? '<div class="tags sub">Not tagged yet</div>' : ''}
+    ${strip ? `<div class="strip">${strip}</div>` : ''}
+  </div>`;
+}
+
+function more() {
+  const next = filtered.slice(shown, shown + 100);
+  $('#list').insertAdjacentHTML('beforeend', next.map(rowHtml).join(''));
+  shown += next.length;
+  if (!filtered.length) $('#list').innerHTML = '<div class="empty">No sounds match. Loosen a filter or lower the tag strength.</div>';
+}
+new IntersectionObserver(e => { if (e[0].isIntersecting && D && shown < filtered.length) more(); }, { rootMargin: '600px' }).observe($('#more'));
+
+function redraw(i) { const el = document.querySelector(`.item[data-i="${i}"]`); if (el) el.outerHTML = rowHtml(i); }
+
+function play(i, at = 0) {
+  const prev = current; current = i; const r = D.rows[i];
+  if (audio.dataset.p !== r[0]) { audio.src = '/audio?p=' + encodeURIComponent(r[0]); audio.dataset.p = r[0]; }
+  audio.currentTime = at; audio.play().catch(e => { if (e.name !== 'AbortError') toast('Cannot play this file here: ' + e.message); });
+  $('#now').innerHTML = `<div class="name" title="${esc(r[0])}">${esc(r[0].split('/').pop())}</div><div class="sub">${esc(r[1])}</div>`;
+  $('#note').value = verdicts[r[0]]?.note || '';
+  if (prev >= 0) redraw(prev); redraw(i);
+  document.querySelector(`.item[data-i="${i}"]`)?.scrollIntoView({ block: 'nearest' });
+}
+function step(d) {
+  const pos = filtered.indexOf(current), next = pos < 0 ? 0 : pos + d;
+  if (next < 0 || next >= filtered.length) return;
+  while (next >= shown) more();
+  play(filtered[next]);
+}
+async function verdict(i, v) {
+  const r = D.rows[i], same = verdicts[r[0]]?.verdict === v;
+  const body = { path: r[0], verdict: same ? '' : v, note: i === current ? $('#note').value : (verdicts[r[0]]?.note || '') };
+  const res = await fetch('/api/verdict', { method: 'POST', body: JSON.stringify(body) });
+  if (!res.ok) return toast('Could not save: ' + (await res.json()).error);
+  verdicts = await res.json(); redraw(i);
+  toast(same ? 'Cleared' : v === 'like' ? 'Liked - saved to AUDIO_VERDICTS.json' : 'Rejected');
+}
+async function match(url, label) {
+  $('#status').textContent = 'Matching… (the first search loads the model, about 10 s)';
+  const res = await fetch(url), data = await res.json();
+  if (!res.ok) { $('#status').textContent = data.error; return; }
+  scores = data.scores; scoreLabel = label; $('#sort').value = 'score';
+  if (state.tags.length || $('#q').value) toast('Tag and name filters cleared for the match; kind, pack and length still apply');
+  state.tags = []; $('#q').value = '';
+  $('#status').textContent = `${D.tagged.toLocaleString()} of ${D.total.toLocaleString()} files tagged`;
+  apply(); $('main').scrollTop = 0;
+}
+function copy(i) { const p = D.root.replace(/\\/g, '/') + '/' + D.rows[i][0]; navigator.clipboard.writeText(p).then(() => toast('Copied ' + p)); }
+
+$('#list').addEventListener('click', e => {
+  const item = e.target.closest('.item'); if (!item) return; const i = +item.dataset.i;
+  const tag = e.target.closest('[data-tag]'), seek = e.target.closest('[data-seek]'), act = e.target.closest('[data-act]')?.dataset.act;
+  if (tag) { if (!state.tags.includes(tag.dataset.tag)) state.tags.push(tag.dataset.tag); apply(); return; }
+  if (seek) return play(i, +seek.dataset.seek);
+  if (act === 'like' || act === 'reject') return verdict(i, act);
+  if (act === 'similar') return match('/api/similar?row=' + D.rows[i][8], 'like ' + D.rows[i][0].split('/').pop());
+  if (act === 'reveal') return fetch('/api/reveal', { method: 'POST', body: JSON.stringify({ path: D.rows[i][0] }) });
+  if (act === 'copy') return copy(i);
+  if (act === 'play' && i === current) return audio.paused ? audio.play() : audio.pause();
+  play(i);
+});
+document.body.addEventListener('click', e => {
+  const b = e.target.closest('[data-b]'); if (b) { state.bucket = b.dataset.b; document.querySelectorAll('[data-b]').forEach(x => x.setAttribute('aria-pressed', x === b)); apply(); }
+  const u = e.target.closest('[data-untag]'); if (u) { state.tags = state.tags.filter(t => t !== u.dataset.untag); apply(); }
+  const f = e.target.closest('#facets [data-tag]'); if (f) { state.tags.push(f.dataset.tag); $('#tagq').value = ''; apply(); }
+  if (e.target.id === 'clearscore') { scores = null; if ($('#sort').value === 'score') $('#sort').value = 'name'; apply(); }
+});
+let timer; const later = () => { clearTimeout(timer); timer = setTimeout(apply, 150); };
+['#q', '#pack', '#dmin', '#dmax', '#strength'].forEach(s => $(s).addEventListener('input', later));
+['#novoice', '#tagged', '#liked', '#hiderej', '#sort'].forEach(s => $(s).addEventListener('change', apply));
+$('#tagq').addEventListener('input', () => facets(+$('#strength').value));
+const find = () => { const t = $('#describe').value.trim(); if (t) match('/api/search?q=' + encodeURIComponent(t), '“' + t + '”'); };
+$('#go').onclick = find; $('#describe').addEventListener('keydown', e => { if (e.key === 'Enter') find(); });
+$('#reload').onclick = load;
+$('#note').addEventListener('change', () => { if (current >= 0 && verdicts[D.rows[current][0]]) {
+  const r = D.rows[current]; fetch('/api/verdict', { method: 'POST', body: JSON.stringify({ path: r[0], verdict: verdicts[r[0]].verdict, note: $('#note').value }) })
+    .then(res => res.json()).then(v => { verdicts = v; toast('Note saved'); }); } else if (current >= 0) toast('Like or reject the sound to keep its note'); });
+audio.addEventListener('play', () => current >= 0 && redraw(current));
+audio.addEventListener('pause', () => current >= 0 && redraw(current));
+audio.addEventListener('ended', () => { if ($('#autonext').checked) step(1); });
+audio.addEventListener('timeupdate', () => {
+  const strip = document.querySelector(`.item[data-i="${current}"] .strip`); if (!strip || !audio.duration) return;
+  const span = D.rows[current][7].length * 10, x = Math.min(1, audio.currentTime / Math.min(span, audio.duration));
+  let head = strip.querySelector('.head'); if (!head) { head = document.createElement('i'); head.className = 'head'; strip.append(head); }
+  head.style.left = (x * 100) + '%';
+});
+document.addEventListener('keydown', e => {
+  if (e.target.matches?.('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'ArrowDown' || k === 'j') { e.preventDefault(); step(1); }
+  else if (k === 'ArrowUp' || k === 'k') { e.preventDefault(); step(-1); }
+  else if (k === ' ') { e.preventDefault(); if (current < 0) step(1); else audio.paused ? audio.play() : audio.pause(); }
+  else if (k === 'ArrowRight') audio.currentTime += 5;
+  else if (k === 'ArrowLeft') audio.currentTime = Math.max(0, audio.currentTime - 5);
+  else if (current >= 0 && (k === 'l' || k === 'L')) verdict(current, 'like');
+  else if (current >= 0 && (k === 'x' || k === 'X')) verdict(current, 'reject');
+  else if (current >= 0 && (k === 'm' || k === 'M') && D.rows[current][8] >= 0) match('/api/similar?row=' + D.rows[current][8], 'like ' + D.rows[current][0].split('/').pop());
+  else if (current >= 0 && (k === 'c' || k === 'C')) copy(current);
+});
+load().catch(e => { $('#status').textContent = 'Could not load: ' + e.message; });
+</script>
+</body>
+</html>

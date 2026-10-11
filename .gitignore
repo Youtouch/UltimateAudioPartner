@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Library data written by the tools: it lists your own (often licensed) sound packs file by file.
+# It belongs in the library folder, never in this repository.
+AUDIO_TAGS*.csv
+AUDIO_TAGS*.log
+*.f32
+AUDIO_VERDICTS.json
+AUDIO_VERDICTS.tmp
+AUDIO_LEDGER*
+AUDIO_AMBIENCE_INDEX*
+AUDIO_MUSIC_*
+
+# Audio and video: sound packs and renders are not redistributable here
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.aif
+*.aiff
+*.m4a
+*.aac
+*.opus
+*.mp4
+*.mov
+
+# QA output from qa_export.py
+*_qa/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
