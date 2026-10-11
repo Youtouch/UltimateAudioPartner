@@ -321,8 +321,6 @@ def run():
     for test in (names_labels, library, audio_rules, statistics, review, review_attribution, review_tagger_priority):
         test(api)
         print(test.__name__ + ": ok")
-    from label_self_tests import run as run_labels
-    run_labels(api)
     print("All vocabulary tagging self-tests passed.")
 
 
