@@ -13,6 +13,14 @@ AUDIO_TAGS*.log
 AUDIO_VERDICTS.json
 AUDIO_VERDICTS.tmp
 AUDIO_LEDGER*
+AUDIO_NAMES*
+*.npz
+# Benchmark data is drawn from your own library: only the bench tools are published
+skills/audio-designer/bench/*
+!skills/audio-designer/bench/*.py
+!skills/audio-designer/bench/README.md
+!skills/audio-designer/bench/vocabulary.csv
+!skills/audio-designer/bench/queries.csv
 AUDIO_AMBIENCE_INDEX*
 AUDIO_MUSIC_*
 

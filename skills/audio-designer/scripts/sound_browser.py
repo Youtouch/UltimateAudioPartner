@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -87,17 +88,32 @@ class Library:
         data = np.fromfile(self.vectors, '<f4')
         return data[:len(data) // DIM * DIM].reshape(-1, DIM)  # a pass still writing may leave a partial row
 
-    def scores(self, query=None, like=None):
+    def similar(self, like):
+        """More like this: the sound itself, by its audio fingerprint."""
         m = self.matrix()
-        if like is not None:
-            if not 0 <= like < len(m):
-                raise ValueError('That file has no fingerprint yet')
-            target = m[like]
-        else:
-            sys.path.insert(0, str(HERE))
-            from audio_tag import embed_text  # first call loads CLAP (~10 s)
-            target = embed_text([query])[0]
-        return [round(float(s), 4) for s in m @ target]
+        if not 0 <= like < len(m):
+            raise ValueError('That file has no fingerprint yet')
+        return {'scores': [round(float(s), 4) for s in m @ m[like]]}
+
+    def search(self, query):
+        """A description: audio, name and label sources fused (audio_search.py). Rebuilt when the tags change."""
+        sys.path.insert(0, str(HERE))
+        from audio_search import Index  # first call loads CLAP and embeds new names
+        stamp = self.tags.stat().st_mtime_ns
+        with self.lock:
+            # A running tagging pass rewrites the CSV constantly: rebuild at most every 10 minutes.
+            stale = getattr(self, '_index_stamp', None) != stamp and time.time() - getattr(self, '_index_built', 0) > 600
+            if getattr(self, '_index', None) is None or stale:
+                self._index, self._index_stamp, self._index_built = Index(self.root), stamp, time.time()
+            index = self._index
+        results, wanted = index.find(query, top=1000)
+        scores = [None] * len(self.matrix())
+        evidence = {}
+        for r in results:
+            if r['row'] < len(scores):
+                scores[r['row']] = r['score']
+                evidence[r['row']] = r['evidence']
+        return {'scores': scores, 'evidence': evidence, 'labels': list(wanted)}
 
     def verdicts(self):
         try:
@@ -151,9 +167,9 @@ def handler(lib):
                 elif url.path == '/api/data':
                     self.send_json(lib.payload())
                 elif url.path == '/api/search':
-                    self.send_json({'scores': lib.scores(query=q['q'])})
+                    self.send_json(lib.search(q['q']))
                 elif url.path == '/api/similar':
-                    self.send_json({'scores': lib.scores(like=int(q['row']))})
+                    self.send_json(lib.similar(int(q['row'])))
                 elif url.path == '/audio':
                     self.send_audio(lib.file(q['p']))
                 else:

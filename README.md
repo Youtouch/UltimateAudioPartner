@@ -17,7 +17,8 @@ Everything runs locally. No account, no server, nothing running in the backgroun
 - **`audio-designer` skill.** The method an agent follows: turn a request into a brief, shortlist from the library, recognise and measure the shortlist, return at most three candidates with their evidence (or "no suitable match"), then plan and check the mix: layer priority, starting levels, ducking, frequency clashes, a cue sheet, and render checks that work without listening.
 - **`audio_tag.py`.** Tags any audio or video file with AudioSet sound-event labels (527 classes: birds, speech, choir, crickets, whoosh, piano…) for the whole file and for each 10-second window. It also ranks files against a written description with CLAP. It can tag an entire library into one CSV, resuming where it stopped.
 - **`audio_map.py` and `audio_index.py`.** Measurements an agent can trust: tempo, beat times, loud and quiet sections and strongest hits of a track (for cutting video to music); loudness, true peak, frequency bands, event density, steadiness and a loop hint for ambience and effects. Each has a built-in self-test (`--selftest`, `check`).
-- **Sound browser.** A local web page over the tagged library: filter by kind, pack, length and tag, search by description, find "more like this", audition with the keyboard, and like or reject sounds. Your verdicts are saved to a JSON file the agent reads before proposing anything.
+- **`audio_search.py`: search by description, cross-referenced.** No single source is reliable on its own: names can be codes, the audio model confuses quiet files with "soft" sounds, and the AudioSet tagger mislabels short designed effects. So three sources rank the library separately: the **audio** fingerprint (CLAP), the **cleaned file name** ("FL_GFX_UI_Click_30.wav" becomes "ui click", matched by meaning and by exact words), and the **AudioSet labels**, which only confirm what the other two found. Reciprocal rank fusion merges them, so a file several sources agree on comes first, and every result keeps each source's own rank as evidence. The sound word of a query leads: in "a single soft wooden click", "click" counts most.
+- **Sound browser.** A local web page over the tagged library: filter by kind, pack, length and tag, search by description (with each source's rank shown on every result), find "more like this", audition with the keyboard, and like or reject sounds. Your verdicts are saved to a JSON file the agent reads before proposing anything.
 
 ## Requirements
 
@@ -92,6 +93,19 @@ It writes `AUDIO_VERDICTS.json` there: your likes, rejects and notes.
 | C | Copy the full path |
 
 Each file shows a strip of 10-second blocks: blocks where a selected tag is heard light up, and clicking a block jumps there.
+
+## Measuring search quality
+
+`skills/audio-designer/bench/` builds a stratified benchmark of a few hundred clips from your own tagged library (14 sound families, each with confusable hard negatives, whole packs kept on one side of a dev/test split) and scores any search method against it: P@10, P@50 and average precision per query, dev and test reported separately.
+
+```bash
+AUDIO_LIBRARY=D:/MySounds python skills/audio-designer/bench/bench_select.py build
+AUDIO_LIBRARY=D:/MySounds python skills/audio-designer/bench/bench_eval.py run --mode proxy --callable skills/audio-designer/bench/methods.py:fused
+```
+
+Truth comes from you listening to each clip (about 20 seconds per clip, instructions in the bench README). Until then, `--mode proxy` scores against file names and says so on every report: it flattens differences and flatters name-based methods.
+
+On the author's library, with the proxy: audio-only search scored a mean average precision of 0.26 (dev) and 0.25 (test); the fused search 0.37 and 0.35; the file name alone 0.56 and 0.53. The last number shows the proxy's bias rather than a better method, since names are also its answer key, so whether fusion beats names alone awaits the listening review. For "a single soft wooden click" over 22,000 files, click-named results in the top 100 went from 3 (audio only) to 60 (fused).
 
 ## Using the skills with an agent
 

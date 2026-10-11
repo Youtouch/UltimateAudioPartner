@@ -67,6 +67,7 @@ main { overflow-y: auto; padding: 0 16px 16px; }
 .strip span { flex: 1; background: var(--seg); border-radius: 2px; cursor: pointer; }
 .strip span.hit { background: var(--hit); }
 .strip .head { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); pointer-events: none; }
+.ev { display: flex; gap: 4px; font-size: 11px; } .ev b { font-weight: 500; padding: 1px 6px; border-radius: 999px; background: var(--chip); color: var(--muted); font-variant-numeric: tabular-nums; } .ev b.on { background: var(--accent-soft); color: var(--text); }
 .score { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; font-size: 12px; }
 .dur { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; min-width: 44px; text-align: right; }
 footer { grid-column: 1 / -1; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 16px;
@@ -161,7 +162,7 @@ const ICON = {
   folder: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v8h-13z"/></svg>',
   copy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V2H2v9h3"/></svg>',
 };
-let D = null, verdicts = {}, filtered = [], shown = 0, current = -1, scores = null, scoreLabel = '';
+let D = null, verdicts = {}, filtered = [], shown = 0, current = -1, scores = null, evidence = null, scoreLabel = '';
 const state = { bucket: '', tags: [] };
 const audio = $('#audio');
 
@@ -252,7 +253,7 @@ function rowHtml(i) {
   return `<div class="item ${v}${i === current ? ' current' : ''}" data-i="${i}">
     <button class="play" data-act="play" aria-label="Play ${esc(file)}">${i === current && !audio.paused ? ICON.pause : ICON.play}</button>
     <div style="min-width:0"><div class="name" title="${esc(r[0])}">${esc(file)}</div><div class="sub">${esc(folder)}</div></div>
-    <div class="meta">${scores && r[8] >= 0 ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
+    <div class="meta">${evidence && evidence[r[8]] ? `<span class="ev" title="Rank of this file in each source; a dash means that source did not find it">${['audio', 'name', 'label'].map(s => `<b class="${evidence[r[8]][s].rank ? 'on' : ''}">${s} ${evidence[r[8]][s].rank ? '#' + evidence[r[8]][s].rank : '–'}</b>`).join('')}</span>` : ''}${scores && r[8] >= 0 && scores[r[8]] != null ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
       <span class="dur">${fmt(r[3])}</span>
       <button class="icon${v === 'like' ? ' on-like' : ''}" data-act="like" aria-label="Like" title="Like (L)">${v === 'like' ? ICON.likeOn : ICON.like}</button>
       <button class="icon${v === 'reject' ? ' on-reject' : ''}" data-act="reject" aria-label="Reject" title="Reject (X)">${ICON.reject}</button>
@@ -298,10 +299,10 @@ async function verdict(i, v) {
   toast(same ? 'Cleared' : v === 'like' ? 'Liked - saved to AUDIO_VERDICTS.json' : 'Rejected');
 }
 async function match(url, label) {
-  $('#status').textContent = 'Matching… (the first search loads the model, about 10 s)';
+  $('#status').textContent = 'Matching… (the first search loads the models and indexes the names: up to a minute, longer while a tagging pass is running)';
   const res = await fetch(url), data = await res.json();
   if (!res.ok) { $('#status').textContent = data.error; return; }
-  scores = data.scores; scoreLabel = label; $('#sort').value = 'score';
+  scores = data.scores; evidence = data.evidence || null; scoreLabel = label + (data.labels?.length ? ` · labels checked: ${data.labels.slice(0, 3).join(', ')}` : ''); $('#sort').value = 'score';
   if (state.tags.length || $('#q').value) toast('Tag and name filters cleared for the match; kind, pack and length still apply');
   state.tags = []; $('#q').value = '';
   $('#status').textContent = `${D.tagged.toLocaleString()} of ${D.total.toLocaleString()} files tagged`;
@@ -325,7 +326,7 @@ document.body.addEventListener('click', e => {
   const b = e.target.closest('[data-b]'); if (b) { state.bucket = b.dataset.b; document.querySelectorAll('[data-b]').forEach(x => x.setAttribute('aria-pressed', x === b)); apply(); }
   const u = e.target.closest('[data-untag]'); if (u) { state.tags = state.tags.filter(t => t !== u.dataset.untag); apply(); }
   const f = e.target.closest('#facets [data-tag]'); if (f) { state.tags.push(f.dataset.tag); $('#tagq').value = ''; apply(); }
-  if (e.target.id === 'clearscore') { scores = null; if ($('#sort').value === 'score') $('#sort').value = 'name'; apply(); }
+  if (e.target.id === 'clearscore') { scores = null; evidence = null; if ($('#sort').value === 'score') $('#sort').value = 'name'; apply(); }
 });
 let timer; const later = () => { clearTimeout(timer); timer = setTimeout(apply, 150); };
 ['#q', '#pack', '#dmin', '#dmax', '#strength'].forEach(s => $(s).addEventListener('input', later));

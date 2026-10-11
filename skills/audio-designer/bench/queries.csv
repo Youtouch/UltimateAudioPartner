@@ -1,0 +1,29 @@
+query_id,query,relevant_tags,match,exclude_tags,min_duration,max_duration,proxy_regex,proxy_exclude_regex
+single_soft_click,a single soft wooden click,click,all,speech;sung_voice;choir,,1,click|clack,choir|chant|sing|vocal|voice
+short_tap,a short light tap,tap,all,,,1,tap|knock,
+clock_tick,a single clock tick,tick,all,,,1,tick|clock,
+ui_confirm,a short UI confirmation,ui_confirm,all,,,3,confirm|success|accept|positive,
+ui_select,a UI selection click,ui_select,all,,,3,select|button|click,
+ui_warning,a game warning beep,ui_warning,all,,,,warn|alert|alarm,
+birds_dawn,birds at dawn,bird_song;bird_chirp,any,,,,bird|chirp|tweet|dawn,
+owl_call,an owl hooting,owl,all,,,,owl|hoot,
+insect_chorus,a continuous insect chorus,insect_chorus;cricket,any,,,,insect|cricket|cicada,
+insect_buzz,a close insect buzzing,insect_buzz;bee,any,,,,buzz|bee|mosquito,
+frog_croak,frogs croaking near water,frog,all,,,,frog|croak|toad,
+rain_bed,steady gentle rain,rain,all,,,,rain,
+flowing_water,a flowing stream,water_flow,all,,,,stream|river|waterfall|flow,
+water_drop,a single water drop,water_drip,all,,,2,drip|drop,
+wind_bed,wind through leaves,wind;leaves,any,,,,wind|breeze|gust,
+spoken_voice,a person speaking,speech,all,,,,speech|spoken|talk|dialog|voice,
+whisper,a whispered voice,whisper,all,,,,whisper,
+choir,a choir singing,choir,all,,,,choir|choral,
+sung_voice,a sung vocal line,sung_voice;chant,any,,,,sing|vocal|chant|choir,
+organ,a sustained organ note,organ,all,,,,organ,
+synth_pad,a sustained instrumental pad,pad,all,sung_voice;choir;chant,,,pad|synth|drone,choir|chant|sing|vocal|voice
+calm_piano,calm piano without voices,piano;instrumental,all,speech;sung_voice;choir;chant,,,piano|keys,choir|chant|sing|vocal|voice
+calm_instrumental,calm instrumental music,instrumental;calm,all,speech;sung_voice;choir;chant,,,calm|ambient|relax|meditat|healing|daydream,choir|chant|sing|vocal|voice
+quiet_room,mostly silence or quiet room tone,silence_or_room_tone;very_quiet,any,,,,silence|silent|quiet|room.?tone,
+long_ambience,a long environmental ambience bed,ambience_bed,all,,60,,ambien|forest|night|rain|wind|ocean,
+impact,a short heavy impact,impact,all,,,5,impact|hit|bang|slam,
+whoosh,a quick sweeping whoosh,whoosh,all,,,5,whoosh|swoosh|swish,
+choir_negative,an instrumental organ with no choir,organ;instrumental,all,choir;sung_voice;chant,,,organ,choir|chant|sing|vocal|voice

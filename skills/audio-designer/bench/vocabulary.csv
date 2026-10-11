@@ -1,0 +1,90 @@
+tag,definition,audioset_labels,mapping_relation
+click,Brief dry clicking transient.,Clicking,direct
+tap,Light contact tap.,Tap,direct
+knock,Audible knock on a surface.,Knock,direct
+tick,Discrete clock-like tick.,Tick,direct
+ui_confirm,Cue judged to communicate confirmation.,"Beep, bleep;Ding",approximate
+ui_cancel,Cue judged to communicate cancellation.,,studio_only
+ui_warning,Cue judged to communicate a warning.,Alarm,approximate
+ui_select,Cue judged to communicate selection.,,studio_only
+ui_notification,Cue judged to announce a notification.,Ding;Chime,approximate
+beep,Short electronic pitched beep.,"Beep, bleep",direct
+chime,Resonant chime sound.,Chime,direct
+bell,Bell strike or ring.,Bell,direct
+coin,Coin handling or dropping sound.,Coin (dropping),direct
+whoosh,Sweeping rush of air or designed sweep.,"Whoosh, swoosh, swish",direct
+impact,Collision or striking transient.,"Bang;Thump, thud;Whack, thwack",approximate
+explosion,Explosive burst with a noisy decay.,Explosion,direct
+slam,Forceful closing or slamming event.,Slam,direct
+crash,Crashing or smashing event.,"Smash, crash",direct
+footsteps,Audible steps of a walking person.,"Walk, footsteps",direct
+scrape,Surface scraping sound.,Scrape,direct
+creak,Creaking surface or mechanism.,Creak,direct
+rattle,Repeated loose-object rattling.,Rattle,direct
+squeak,Short high pitched friction squeak.,Squeak,direct
+rustle,Soft irregular surface rustling.,Rustle,direct
+wood,Audible wooden material character; listener judgement.,Wood,direct
+metal,Audible metallic material character; listener judgement.,Clang,approximate
+single_event,One distinct event in the reviewed span.,,studio_only
+repeated_events,Multiple distinct events in the reviewed span.,,studio_only
+soft,Gentle perceived attack or intensity at fixed audition volume.,,studio_only
+sharp_attack,Abrupt perceived onset.,,studio_only
+bird_song,Audible bird vocalization or song.,"Bird vocalization, bird call, bird song",direct
+bird_chirp,Short bird chirp or tweet.,"Chirp, tweet",direct
+owl,Audible owl call.,Owl;Hoot,direct
+crow,Audible crow call.,Crow;Caw,direct
+waterfowl,Audible duck or goose call.,Duck;Goose;Quack;Honk,direct
+bird_wings,Audible bird wing motion.,"Bird flight, flapping wings",direct
+insect_chorus,Sustained overlapping insect calls.,Insect;Cricket,approximate
+cricket,Audible cricket stridulation.,Cricket,direct
+insect_buzz,Insect-like buzzing sound.,Buzz;Insect,direct
+bee,Audible bee or wasp-like buzz.,"Bee, wasp, etc.",direct
+frog,Audible frog or toad vocalization.,Frog;Croak,direct
+dog,Audible dog vocalization.,Dog;Bark,direct
+cat,Audible cat vocalization.,Cat;Meow,direct
+animal_other,Audible animal source not covered more specifically.,Animal,approximate
+rain,Audible rainfall.,Rain;Rain on surface,direct
+water_flow,Continuous running or flowing water.,"Stream;Trickle, dribble;Waterfall",direct
+water_drip,Discrete liquid dripping.,Drip,direct
+water_splash,Liquid splash event.,"Splash, splatter",direct
+ocean_waves,Audible surf or ocean waves.,"Waves, surf;Ocean",direct
+wind,Audible air movement or wind noise.,Wind,direct
+leaves,Audible rustling foliage.,Rustling leaves,direct
+thunder,Thunder rumble or crack.,Thunder,direct
+fire,Audible fire burning or crackling.,Fire;Crackle,direct
+speech,Intelligible or speech-like human utterance.,Speech,direct
+whisper,Whispered speech.,Whispering,direct
+crowd,Multiple people audible as a crowd.,Crowd;Chatter,direct
+laughter,Human laughing.,Laughter,direct
+breathing,Human breath sounds.,Breathing,direct
+sung_voice,Audible sung human vocal line.,Singing;Vocal music,direct
+choir,Multiple voices singing together.,Choir,direct
+chant,Audible rhythmic vocal chanting.,Chant;Mantra,direct
+humming,Human vocal humming.,Humming,direct
+music,Audible organized musical content.,Music,direct
+instrumental,Music with no audible human voice in the reviewed span.,,studio_only
+calm,Low agitation or gentle musical character; listener judgement.,,studio_only
+organ,Audible acoustic or electronic organ timbre.,Organ;Electronic organ;Hammond organ,direct
+pad,Sustained synthesizer or instrumental pad texture.,,studio_only
+piano,Audible piano or electric piano.,Piano;Electric piano,direct
+synth,Audible synthesizer timbre.,Synthesizer,direct
+guitar,Audible guitar.,Guitar,direct
+strings,Audible bowed strings or string section.,String section;Bowed string instrument,direct
+drum,Audible musical drum.,Drum,direct
+percussion,Audible musical percussion.,Percussion,direct
+flute,Audible flute.,Flute,direct
+brass,Audible brass instrument or section.,Brass instrument,direct
+bass,Audible bass instrument line.,Bass guitar;Double bass,direct
+ambient_music,Sustained atmospheric musical texture.,Ambient music,direct
+drone,Long sustained tone or noise texture.,,studio_only
+ambience_bed,Continuous environmental layer in the reviewed span.,,studio_only
+silence_or_room_tone,Near silence or quiet room background in the reviewed span.,Silence,approximate
+very_quiet,Barely audible content at fixed audition volume.,,studio_only
+noise,Audible broadband noise.,Noise,direct
+static,Electronic static-like crackle or hiss.,Static,direct
+hum,Steady low pitched hum.,Hum;Mains hum,direct
+engine,Audible engine operation.,Engine,direct
+traffic,Audible roadway traffic.,"Traffic noise, roadway noise",direct
+door,Audible opening or closing door.,Door,direct
+mechanical,Audible mechanism operation.,Mechanisms,approximate
+unknown_source,A source is audible but its identity cannot be assigned.,,studio_only
