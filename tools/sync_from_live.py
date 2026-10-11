@@ -10,7 +10,7 @@ import argparse
 import shutil
 from pathlib import Path
 
-PUBLISH_BENCH = {'bench_select.py', 'bench_eval.py', 'bench_clap.py', 'methods.py', 'README.md', 'vocabulary.csv', 'queries.csv'}
+PUBLISH_BENCH = {'bench_select.py', 'bench_eval.py', 'bench_clap.py', 'methods.py', 'tagger_trial.py', 'README.md', 'vocabulary.csv', 'queries.csv'}
 
 
 def ignore(folder, names):

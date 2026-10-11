@@ -14,61 +14,62 @@ Everything runs locally. No account, no server, nothing running in the backgroun
 
 ## What is in it
 
+- **Launchers.** `Tag Library.bat` and `Sound Browser.bat` on Windows, `tag-library.sh` and `sound-browser.sh` on macOS and Linux: drag your sound folder on, or type it once. Everything below runs from them; nothing else needs the terminal.
 - **`audio-designer` skill.** The method an agent follows: turn a request into a brief, shortlist from the library, recognise and measure the shortlist, return at most three candidates with their evidence (or "no suitable match"), then plan and check the mix: layer priority, starting levels, ducking, frequency clashes, a cue sheet, and render checks that work without listening.
 - **`audio_tag.py`.** Tags any audio or video file with AudioSet sound-event labels (527 classes: birds, speech, choir, crickets, whoosh, piano…) for the whole file and for each 10-second window. It also ranks files against a written description with CLAP. It can tag an entire library into one CSV, resuming where it stopped.
 - **`audio_map.py` and `audio_index.py`.** Measurements an agent can trust: tempo, beat times, loud and quiet sections and strongest hits of a track (for cutting video to music); loudness, true peak, frequency bands, event density, steadiness and a loop hint for ambience and effects. Each has a built-in self-test (`--selftest`, `check`).
 - **`audio_search.py`: search by description, cross-referenced.** No single source is reliable on its own: names can be codes, the audio model confuses quiet files with "soft" sounds, and the AudioSet tagger mislabels short designed effects. So three sources rank the library separately: the **audio** fingerprint (CLAP), the **cleaned file name** ("FL_GFX_UI_Click_30.wav" becomes "ui click", matched by meaning and by exact words), and the **AudioSet labels**, which only confirm what the other two found. Reciprocal rank fusion merges them, so a file several sources agree on comes first, and every result keeps each source's own rank as evidence. The sound word of a query leads: in "a single soft wooden click", "click" counts most.
 - **Sound browser.** A local web page over the tagged library: filter by kind, pack, length and tag, search by description (with each source's rank shown on every result), find "more like this", audition with the keyboard, and like or reject sounds. Your verdicts are saved to a JSON file the agent reads before proposing anything.
 
-## Requirements
+## Get started
 
-- Python 3.10 or later
-- FFmpeg and ffprobe on `PATH` (or set `FFMPEG` to the `ffmpeg` executable)
-- Python packages:
+You need Python 3.10 or later and FFmpeg (with ffprobe) on your `PATH`. Then, from the repository folder:
 
 ```bash
-pip install numpy scipy soundfile librosa transformers
-pip install torch --index-url https://download.pytorch.org/whl/cu128
+pip install -r requirements.txt
 ```
 
-The second line installs PyTorch with CUDA. Without an NVIDIA GPU, `pip install torch` gives the CPU build: fine for shortlists of a few hundred files, but tagging a library of tens of thousands of files takes many hours on a CPU.
+With an NVIDIA GPU, install PyTorch's CUDA build first (`pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128`): tagging tens of thousands of files is an overnight job on a GPU and many times longer on a CPU. Shortlists of a few hundred files are fine on a CPU.
 
-On first use, two models download into the Hugging Face cache (about 1 GB together):
+**1. Tag your library.** On Windows, drag your sound folder onto **`Tag Library.bat`**; on macOS or Linux, run `./tag-library.sh "/path/to/sounds"`. It records what every file contains and a fingerprint for search, next to your sounds. Stop it any time: running it again continues where it stopped, and adds files you put in later. The folder is remembered in `library.txt`, so later runs need no argument.
+
+**2. Browse it.** Double-click **`Sound Browser.bat`** (or run `./sound-browser.sh`). The page opens in your web browser; keep the window open while you use it. Files not tagged yet are still listed and playable, and **Reload** picks up a tagging pass still running.
+
+On first use, the tools download two models into the Hugging Face cache (about 1 GB together):
 
 | Model | Purpose | Licence |
 |---|---|---|
 | [MIT/ast-finetuned-audioset-10-10-0.4593](https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593) | Sound-event labels (AudioSet) | BSD-3-Clause |
 | [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) | Search by description, "more like this" | Apache-2.0 |
 
-## Quick start
+## The tools from the command line
 
-Check the installation (it tags a test tone and test noise, and checks CLAP ranks them correctly):
+Every tool lives in `skills/audio-designer/scripts/`, shared with the agent skill, and has a self-test:
 
 ```bash
 python skills/audio-designer/scripts/audio_tag.py check
+python skills/audio-designer/scripts/audio_search.py check
 ```
 
-Tag a few files:
+Tag a few loose files, or rank them against a description by their audio:
 
 ```bash
 python skills/audio-designer/scripts/audio_tag.py tag bed.wav call.mp3
-```
-
-Rank files against a description:
-
-```bash
 python skills/audio-designer/scripts/audio_tag.py rank "a short soft wooden knock" a.wav b.wav c.wav
 ```
 
-Tag a whole library (resumable: run the same command again to continue, or to add new files):
+Tag a whole library and search it from the terminal, with each source's evidence:
 
 ```bash
 python skills/audio-designer/scripts/audio_tag.py tag --root "D:/MySounds" --out "D:/MySounds/AUDIO_TAGS.csv"
+python skills/audio-designer/scripts/audio_search.py find --root "D:/MySounds" "a wooden click" --top 20
 ```
 
-This writes `AUDIO_TAGS.csv` (labels, 10-second timeline, speech/music/silence scores) and `AUDIO_TAGS_clap.f32` (one 512-number CLAP vector per file) next to your sounds.
+The library pass writes `AUDIO_TAGS.csv` (labels, 10-second timeline, speech/music/silence scores) and `AUDIO_TAGS_clap.f32` (one 512-number CLAP vector per file); the search adds `AUDIO_NAMES_clap.npz` (file-name vectors). All three stay next to your sounds.
 
 ## The sound browser
+
+`Sound Browser.bat` / `sound-browser.sh` run this for you:
 
 ```bash
 python skills/audio-designer/scripts/sound_browser.py --root "D:/MySounds"

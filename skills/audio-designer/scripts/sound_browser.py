@@ -226,6 +226,12 @@ def handler(lib):
     return Handler
 
 
+class Server(ThreadingHTTPServer):
+    # HTTPServer sets SO_REUSEADDR, which on Windows lets a second server bind a port already in use:
+    # two servers would share it silently and the free-port fallback below would never trigger.
+    allow_reuse_address = False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--root', type=Path, required=True, help='library folder holding AUDIO_TAGS.csv')
@@ -235,7 +241,7 @@ def main():
     lib = Library(a.root)
     for port in range(a.port, a.port + 20):  # another local tool may hold the port
         try:
-            server = ThreadingHTTPServer(('127.0.0.1', port), handler(lib))
+            server = Server(('127.0.0.1', port), handler(lib))
             break
         except OSError:
             continue
