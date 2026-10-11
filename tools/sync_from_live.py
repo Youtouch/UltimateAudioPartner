@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PUBLISH_TAGGING = {'vocab_tags.py', 'self_tests.py', 'vocabulary_synonyms.csv'}
+PUBLISH_TAGGING = {'vocab_tags.py', 'self_tests.py', 'label_rules.py', 'label_self_tests.py', 'label_decisions_v2.json', 'vocabulary_synonyms.csv'}
 PUBLISH_BENCH = {'bench_select.py', 'bench_eval.py', 'bench_clap.py', 'methods.py', 'tagger_trial.py', 'README.md', 'vocabulary.csv', 'queries.csv'}
 
 

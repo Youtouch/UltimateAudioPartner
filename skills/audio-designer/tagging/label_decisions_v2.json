@@ -1,0 +1,2495 @@
+{
+  "version": "dev-label-consistency-v2",
+  "recipe": "adaptive",
+  "vocabulary_signature": "0d153e07aaef48704116e7aa7af8a1d95e82fa1cb781a31b4f8c29e9aef4a119",
+  "selection": "Max mean AST/CED DEV pooled confirmation, subject to >=90% baseline confirmed claims retained in EACH cohort. No TEST metrics used.",
+  "retention_budget": 0.9,
+  "inputs": {
+    "snapshots": {
+      "ast.csv": {
+        "source": "AUDIO_TAGS.before-relabel.csv",
+        "sha256": "7e346b1d42beffd12d04127111615397e4c37101f7e20d221a6b260287d45e25",
+        "rows": 23998
+      },
+      "ced.csv": {
+        "source": "AUDIO_TAGS.csv",
+        "sha256": "a8a75459bd5a8906a567bf40accf6ddd6375b17dfbd16e24871ca9109e7c39ee",
+        "rows": 23999
+      },
+      "ledger.csv": {
+        "source": "AUDIO_LEDGER_files.csv",
+        "sha256": "b5c1a463a72be564b1be13d1296fddb63dd0a71e46bcd9d56840d8bd18998855",
+        "rows": 35334
+      }
+    },
+    "common_paths": 23998,
+    "matched_unchanged": 23942,
+    "excluded_changed": 56,
+    "ced_only": 1,
+    "ast_only": 0,
+    "frozen_audio_votes_sha256": "e5ce917363c6b5a38f43709a57462c0a106c352af56d91d38fb512c6599e4794",
+    "frozen_audio_coverage_sha256": "f6017b84a0db5abdd385780cfff3308789a60a9473a722e07797515e6e6e2b77",
+    "reference_note": "Audio votes frozen from v1, including its AST-silence guard and unsupervised library-wide knees. Names recomputed with current synonyms. TEST is held out for label decisions, not the historical audio screen.",
+    "benchmark_sha256": "7d40c550a961685cf4dae489e12e8818f3b56f61838f384190f5bb5bc26e415e",
+    "benchmark_pack_splits_reused": 104,
+    "split_policy": "Preserve bench pack assignments; remaining normalized packs hash(seed=20261010) to 60% DEV, 40% TEST, without inspecting outcomes.",
+    "split_counts": {
+      "dev": {
+        "files": 13256,
+        "packs": 105
+      },
+      "test": {
+        "files": 10686,
+        "packs": 70
+      }
+    },
+    "windows": {
+      "ast": {
+        "files_with_windows": 23942,
+        "printed_windows": 55269,
+        "unknown_timeline_files": 0
+      },
+      "ced": {
+        "files_with_windows": 23942,
+        "printed_windows": 55269,
+        "unknown_timeline_files": 0
+      }
+    },
+    "features_sha256": "f2d1334f79eaba0a47aac2268e16949c38ef7bc0c19efac6648918bf252acbee"
+  },
+  "dev_metrics": {
+    "ast": {
+      "claims": 7999,
+      "confirmed": 2655,
+      "confirmation": 0.3319164895611951,
+      "baseline_confirmed": 2854,
+      "confirmed_dropped": 199,
+      "confirmed_retained": 0.9302733006306938,
+      "claims_dropped": 3281,
+      "reference_claims": 22671
+    },
+    "ced": {
+      "claims": 10252,
+      "confirmed": 2954,
+      "confirmation": 0.28813889972688256,
+      "baseline_confirmed": 3192,
+      "confirmed_dropped": 238,
+      "confirmed_retained": 0.9254385964912281,
+      "claims_dropped": 4539,
+      "reference_claims": 22671
+    }
+  },
+  "cohorts": {
+    "legacy-unspecified": [
+      {
+        "tag": "click",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "tap",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 13,
+        "dev_confirmed": 3,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "knock",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 62,
+        "dev_confirmed": 26,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "tick",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 17,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "ui_confirm",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_cancel",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_warning",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_select",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_notification",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "beep",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 52,
+        "dev_confirmed": 35,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "chime",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 34,
+        "dev_confirmed": 21,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "bell",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 35,
+        "dev_confirmed": 17,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "coin",
+        "threshold": 0.12999999523162842,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 421,
+        "dev_confirmed": 160,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "whoosh",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 750,
+        "dev_confirmed": 240,
+        "dev_confirmed_packs": 21
+      },
+      {
+        "tag": "impact",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "explosion",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 491,
+        "dev_confirmed": 265,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "slam",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 80,
+        "dev_confirmed": 34,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "crash",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 50,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "footsteps",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 18,
+        "dev_confirmed": 8,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "scrape",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 275,
+        "dev_confirmed": 48,
+        "dev_confirmed_packs": 12
+      },
+      {
+        "tag": "creak",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 38,
+        "dev_confirmed": 14,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "rattle",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 31,
+        "dev_confirmed": 9,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "squeak",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 34,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "rustle",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 5,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "wood",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 26,
+        "dev_confirmed": 3,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "metal",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "single_event",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "repeated_events",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "soft",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "sharp_attack",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "bird_song",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 38,
+        "dev_confirmed": 28,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "bird_chirp",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 35,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "owl",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 17,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "crow",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 16,
+        "dev_confirmed": 3,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "waterfowl",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 19,
+        "dev_confirmed": 2,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "bird_wings",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "insect_chorus",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "cricket",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 26,
+        "dev_confirmed": 19,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "insect_buzz",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 36,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "bee",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 4,
+        "dev_confirmed": 2,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "frog",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 26,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "dog",
+        "threshold": 0.30000001192092896,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 20,
+        "dev_confirmed": 8,
+        "dev_confirmed_packs": 3
+      },
+      {
+        "tag": "cat",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 15,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "animal_other",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "rain",
+        "threshold": 0.1599999964237213,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 83,
+        "dev_confirmed": 58,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "water_flow",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 44,
+        "dev_confirmed": 36,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "water_drip",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 39,
+        "dev_confirmed": 24,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "water_splash",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ocean_waves",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 59,
+        "dev_confirmed": 51,
+        "dev_confirmed_packs": 12
+      },
+      {
+        "tag": "wind",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 48,
+        "dev_confirmed": 31,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "leaves",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "thunder",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 30,
+        "dev_confirmed": 20,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "fire",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 45,
+        "dev_confirmed": 14,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "speech",
+        "threshold": 0.30000001192092896,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 664,
+        "dev_confirmed": 61,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "whisper",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "crowd",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 51,
+        "dev_confirmed": 41,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "laughter",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 11,
+        "dev_confirmed": 11,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "breathing",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 22,
+        "dev_confirmed": 19,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "sung_voice",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 12,
+        "dev_confirmed": 8,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "choir",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 14,
+        "dev_confirmed": 13,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "chant",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 18,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "humming",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 2,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "music",
+        "threshold": 0.6899999976158142,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 4737,
+        "dev_confirmed": 372,
+        "dev_confirmed_packs": 40
+      },
+      {
+        "tag": "instrumental",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "calm",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "organ",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 51,
+        "dev_confirmed": 14,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "pad",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "piano",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 413,
+        "dev_confirmed": 177,
+        "dev_confirmed_packs": 33
+      },
+      {
+        "tag": "synth",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 320,
+        "dev_confirmed": 65,
+        "dev_confirmed_packs": 15
+      },
+      {
+        "tag": "guitar",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 281,
+        "dev_confirmed": 132,
+        "dev_confirmed_packs": 24
+      },
+      {
+        "tag": "strings",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 133,
+        "dev_confirmed": 113,
+        "dev_confirmed_packs": 20
+      },
+      {
+        "tag": "drum",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 298,
+        "dev_confirmed": 83,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "percussion",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 181,
+        "dev_confirmed": 48,
+        "dev_confirmed_packs": 15
+      },
+      {
+        "tag": "flute",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 78,
+        "dev_confirmed": 43,
+        "dev_confirmed_packs": 12
+      },
+      {
+        "tag": "brass",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 120,
+        "dev_confirmed": 49,
+        "dev_confirmed_packs": 16
+      },
+      {
+        "tag": "bass",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 136,
+        "dev_confirmed": 9,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "ambient_music",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 382,
+        "dev_confirmed": 178,
+        "dev_confirmed_packs": 31
+      },
+      {
+        "tag": "drone",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ambience_bed",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "silence_or_room_tone",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "very_quiet",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "noise",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 9,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "static",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 26,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "hum",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 40,
+        "dev_confirmed": 11,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "engine",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 46,
+        "dev_confirmed": 27,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "traffic",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 7,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "door",
+        "threshold": 0.12999999523162842,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 192,
+        "dev_confirmed": 81,
+        "dev_confirmed_packs": 19
+      },
+      {
+        "tag": "mechanical",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "unknown_source",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      }
+    ],
+    "ast": [
+      {
+        "tag": "click",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "tap",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 13,
+        "dev_confirmed": 3,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "knock",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 62,
+        "dev_confirmed": 26,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "tick",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 17,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "ui_confirm",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_cancel",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_warning",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_select",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_notification",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "beep",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 52,
+        "dev_confirmed": 35,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "chime",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 34,
+        "dev_confirmed": 21,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "bell",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 35,
+        "dev_confirmed": 17,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "coin",
+        "threshold": 0.12999999523162842,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 421,
+        "dev_confirmed": 160,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "whoosh",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 750,
+        "dev_confirmed": 240,
+        "dev_confirmed_packs": 21
+      },
+      {
+        "tag": "impact",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "explosion",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 491,
+        "dev_confirmed": 265,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "slam",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 80,
+        "dev_confirmed": 34,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "crash",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 50,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "footsteps",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 18,
+        "dev_confirmed": 8,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "scrape",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 275,
+        "dev_confirmed": 48,
+        "dev_confirmed_packs": 12
+      },
+      {
+        "tag": "creak",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 38,
+        "dev_confirmed": 14,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "rattle",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 31,
+        "dev_confirmed": 9,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "squeak",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 34,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "rustle",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 5,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "wood",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 26,
+        "dev_confirmed": 3,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "metal",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "single_event",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "repeated_events",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "soft",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "sharp_attack",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "bird_song",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 38,
+        "dev_confirmed": 28,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "bird_chirp",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 35,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "owl",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 17,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "crow",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 16,
+        "dev_confirmed": 3,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "waterfowl",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 19,
+        "dev_confirmed": 2,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "bird_wings",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "insect_chorus",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "cricket",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 26,
+        "dev_confirmed": 19,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "insect_buzz",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 36,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "bee",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 4,
+        "dev_confirmed": 2,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "frog",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 26,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "dog",
+        "threshold": 0.30000001192092896,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 20,
+        "dev_confirmed": 8,
+        "dev_confirmed_packs": 3
+      },
+      {
+        "tag": "cat",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 15,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "animal_other",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "rain",
+        "threshold": 0.1599999964237213,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 83,
+        "dev_confirmed": 58,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "water_flow",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 44,
+        "dev_confirmed": 36,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "water_drip",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 39,
+        "dev_confirmed": 24,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "water_splash",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ocean_waves",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 59,
+        "dev_confirmed": 51,
+        "dev_confirmed_packs": 12
+      },
+      {
+        "tag": "wind",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 48,
+        "dev_confirmed": 31,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "leaves",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "thunder",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 30,
+        "dev_confirmed": 20,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "fire",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 45,
+        "dev_confirmed": 14,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "speech",
+        "threshold": 0.30000001192092896,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 664,
+        "dev_confirmed": 61,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "whisper",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "crowd",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 51,
+        "dev_confirmed": 41,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "laughter",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 11,
+        "dev_confirmed": 11,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "breathing",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 22,
+        "dev_confirmed": 19,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "sung_voice",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 12,
+        "dev_confirmed": 8,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "choir",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 14,
+        "dev_confirmed": 13,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "chant",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 18,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "humming",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 2,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "music",
+        "threshold": 0.6899999976158142,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 4737,
+        "dev_confirmed": 372,
+        "dev_confirmed_packs": 40
+      },
+      {
+        "tag": "instrumental",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "calm",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "organ",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 51,
+        "dev_confirmed": 14,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "pad",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "piano",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 413,
+        "dev_confirmed": 177,
+        "dev_confirmed_packs": 33
+      },
+      {
+        "tag": "synth",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 320,
+        "dev_confirmed": 65,
+        "dev_confirmed_packs": 15
+      },
+      {
+        "tag": "guitar",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 281,
+        "dev_confirmed": 132,
+        "dev_confirmed_packs": 24
+      },
+      {
+        "tag": "strings",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 133,
+        "dev_confirmed": 113,
+        "dev_confirmed_packs": 20
+      },
+      {
+        "tag": "drum",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 298,
+        "dev_confirmed": 83,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "percussion",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 181,
+        "dev_confirmed": 48,
+        "dev_confirmed_packs": 15
+      },
+      {
+        "tag": "flute",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 78,
+        "dev_confirmed": 43,
+        "dev_confirmed_packs": 12
+      },
+      {
+        "tag": "brass",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 120,
+        "dev_confirmed": 49,
+        "dev_confirmed_packs": 16
+      },
+      {
+        "tag": "bass",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 136,
+        "dev_confirmed": 9,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "ambient_music",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 382,
+        "dev_confirmed": 178,
+        "dev_confirmed_packs": 31
+      },
+      {
+        "tag": "drone",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ambience_bed",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "silence_or_room_tone",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "very_quiet",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "noise",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 9,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "static",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 26,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "hum",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 40,
+        "dev_confirmed": 11,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "engine",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 46,
+        "dev_confirmed": 27,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "traffic",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 7,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "door",
+        "threshold": 0.12999999523162842,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 192,
+        "dev_confirmed": 81,
+        "dev_confirmed_packs": 19
+      },
+      {
+        "tag": "mechanical",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "unknown_source",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      }
+    ],
+    "ced-base": [
+      {
+        "tag": "click",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "tap",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 17,
+        "dev_confirmed": 2,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "knock",
+        "threshold": 0.12999999523162842,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 264,
+        "dev_confirmed": 51,
+        "dev_confirmed_packs": 13
+      },
+      {
+        "tag": "tick",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 101,
+        "dev_confirmed": 28,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "ui_confirm",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_cancel",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_warning",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_select",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ui_notification",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "beep",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 29,
+        "dev_confirmed": 19,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "chime",
+        "threshold": 0.1599999964237213,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 34,
+        "dev_confirmed": 17,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "bell",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 53,
+        "dev_confirmed": 26,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "coin",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 62,
+        "dev_confirmed": 36,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "whoosh",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 1463,
+        "dev_confirmed": 356,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "impact",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "explosion",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 486,
+        "dev_confirmed": 249,
+        "dev_confirmed_packs": 26
+      },
+      {
+        "tag": "slam",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 54,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "crash",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 48,
+        "dev_confirmed": 14,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "footsteps",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 106,
+        "dev_confirmed": 57,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "scrape",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 55,
+        "dev_confirmed": 16,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "creak",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 2,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "rattle",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 329,
+        "dev_confirmed": 96,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "squeak",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 15,
+        "dev_confirmed": 4,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "rustle",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 7,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "wood",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 27,
+        "dev_confirmed": 5,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "metal",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "single_event",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "repeated_events",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "soft",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "sharp_attack",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "bird_song",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 42,
+        "dev_confirmed": 36,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "bird_chirp",
+        "threshold": 0.1599999964237213,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 35,
+        "dev_confirmed": 17,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "owl",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 23,
+        "dev_confirmed": 13,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "crow",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 15,
+        "dev_confirmed": 5,
+        "dev_confirmed_packs": 2
+      },
+      {
+        "tag": "waterfowl",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 32,
+        "dev_confirmed": 4,
+        "dev_confirmed_packs": 3
+      },
+      {
+        "tag": "bird_wings",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "insect_chorus",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "cricket",
+        "threshold": 0.20000000298023224,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 30,
+        "dev_confirmed": 20,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "insect_buzz",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 49,
+        "dev_confirmed": 15,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "bee",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 5,
+        "dev_confirmed": 2,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "frog",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 51,
+        "dev_confirmed": 13,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "dog",
+        "threshold": 0.12999999523162842,
+        "min_persistence": 0.5,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 37,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "cat",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 9,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "animal_other",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "rain",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 65,
+        "dev_confirmed": 50,
+        "dev_confirmed_packs": 20
+      },
+      {
+        "tag": "water_flow",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 56,
+        "dev_confirmed": 42,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "water_drip",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 42,
+        "dev_confirmed": 20,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "water_splash",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ocean_waves",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 97,
+        "dev_confirmed": 72,
+        "dev_confirmed_packs": 14
+      },
+      {
+        "tag": "wind",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 66,
+        "dev_confirmed": 38,
+        "dev_confirmed_packs": 13
+      },
+      {
+        "tag": "leaves",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 12,
+        "dev_confirmed": 11,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "thunder",
+        "threshold": 0.17000000178813934,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 41,
+        "dev_confirmed": 30,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "fire",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 171,
+        "dev_confirmed": 43,
+        "dev_confirmed_packs": 14
+      },
+      {
+        "tag": "speech",
+        "threshold": 0.1599999964237213,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 325,
+        "dev_confirmed": 56,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "whisper",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 2,
+        "dev_confirmed": 1,
+        "dev_confirmed_packs": 1
+      },
+      {
+        "tag": "crowd",
+        "threshold": 0.17000000178813934,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 74,
+        "dev_confirmed": 53,
+        "dev_confirmed_packs": 11
+      },
+      {
+        "tag": "laughter",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 19,
+        "dev_confirmed": 19,
+        "dev_confirmed_packs": 6
+      },
+      {
+        "tag": "breathing",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.25,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 46,
+        "dev_confirmed": 33,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "sung_voice",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 16,
+        "dev_confirmed": 8,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "choir",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 10,
+        "dev_confirmed": 9,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "chant",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 66,
+        "dev_confirmed": 50,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "humming",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 1,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "music",
+        "threshold": 0.7400000095367432,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 6134,
+        "dev_confirmed": 373,
+        "dev_confirmed_packs": 40
+      },
+      {
+        "tag": "instrumental",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "calm",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "organ",
+        "threshold": 0.10000000149011612,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 61,
+        "dev_confirmed": 15,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "pad",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "piano",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 543,
+        "dev_confirmed": 172,
+        "dev_confirmed_packs": 36
+      },
+      {
+        "tag": "synth",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 892,
+        "dev_confirmed": 94,
+        "dev_confirmed_packs": 18
+      },
+      {
+        "tag": "guitar",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 326,
+        "dev_confirmed": 157,
+        "dev_confirmed_packs": 25
+      },
+      {
+        "tag": "strings",
+        "threshold": 0.14000000059604645,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 126,
+        "dev_confirmed": 106,
+        "dev_confirmed_packs": 20
+      },
+      {
+        "tag": "drum",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 488,
+        "dev_confirmed": 78,
+        "dev_confirmed_packs": 19
+      },
+      {
+        "tag": "percussion",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 353,
+        "dev_confirmed": 60,
+        "dev_confirmed_packs": 17
+      },
+      {
+        "tag": "flute",
+        "threshold": 0.15000000596046448,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 89,
+        "dev_confirmed": 47,
+        "dev_confirmed_packs": 10
+      },
+      {
+        "tag": "brass",
+        "threshold": 0.20999999344348907,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 93,
+        "dev_confirmed": 46,
+        "dev_confirmed_packs": 16
+      },
+      {
+        "tag": "bass",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 109,
+        "dev_confirmed": 6,
+        "dev_confirmed_packs": 4
+      },
+      {
+        "tag": "ambient_music",
+        "threshold": 0.18000000715255737,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 541,
+        "dev_confirmed": 210,
+        "dev_confirmed_packs": 33
+      },
+      {
+        "tag": "drone",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "ambience_bed",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "silence_or_room_tone",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "very_quiet",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "noise",
+        "threshold": 0.1599999964237213,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 28,
+        "dev_confirmed": 7,
+        "dev_confirmed_packs": 5
+      },
+      {
+        "tag": "static",
+        "threshold": 0.11999999731779099,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 137,
+        "dev_confirmed": 36,
+        "dev_confirmed_packs": 16
+      },
+      {
+        "tag": "hum",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 44,
+        "dev_confirmed": 12,
+        "dev_confirmed_packs": 8
+      },
+      {
+        "tag": "engine",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.0,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 74,
+        "dev_confirmed": 36,
+        "dev_confirmed_packs": 9
+      },
+      {
+        "tag": "traffic",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 14,
+        "dev_confirmed": 10,
+        "dev_confirmed_packs": 7
+      },
+      {
+        "tag": "door",
+        "threshold": 0.10999999940395355,
+        "min_persistence": 0.75,
+        "status": "dev_consistency_optimized",
+        "dev_candidates": 150,
+        "dev_confirmed": 63,
+        "dev_confirmed_packs": 20
+      },
+      {
+        "tag": "mechanical",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      },
+      {
+        "tag": "unknown_source",
+        "threshold": 0.1,
+        "min_persistence": 0.0,
+        "status": "sparse_uncalibrated_flat_fallback",
+        "dev_candidates": 0,
+        "dev_confirmed": 0,
+        "dev_confirmed_packs": 0
+      }
+    ]
+  },
+  "provenance_note": "The backup lacks a tagger column. AST identity is supplied by the user; legacy-unspecified is preserved in output rows.",
+  "sparse_policy": "<20 candidates, <5 confirmed or <2 confirming packs: retain uncalibrated flat candidates; no probability calibration claimed."
+}

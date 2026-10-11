@@ -8,13 +8,16 @@ Examples:
 
 Default outputs follow the CLI contract (in --root). Use --out to keep a library read-only.
 All caches and temporary self-test fixtures stay beside this script.
+Label votes default to the frozen DEV policy beside this script; --label-rule flat
+reproduces the old printed >=0.1 rule. Existing CSV columns are unchanged;
+AUDIO_VOCAB_LABEL_RULES.csv and manifest label_policy document fitted decisions.
 """
 import os
 import sys
 
 sys.dont_write_bytecode = True
 for _key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-             "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+             "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "BLIS_NUM_THREADS"):
     os.environ[_key] = "2"
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -191,7 +194,7 @@ def match_name(relative_path, pack, entry):
 def map_labels(top_labels, vocabulary):
     # PAIR handles commas inside AudioSet names. Never sum mapped parent and child scores.
     parsed = {}
-    for label, score in PAIR.findall(top_labels or ""):
+    for label, score in PAIR.findall((top_labels or "").strip()):
         value = numeric(score)
         if math.isfinite(value):
             parsed[label.strip()] = max(parsed.get(label.strip(), -math.inf), value)
@@ -369,7 +372,7 @@ def tagger_name(row):
     return row.get("tagger") or ("legacy-unspecified" if row else "not-evaluated")
 
 
-def build_evidence(library, vocabulary, model=None, top_k=None):
+def build_evidence(library, vocabulary, model=None, top_k=None, label_mode="fitted", label_model=None):
     n, t = len(library.paths), len(vocabulary)
     name = np.zeros((n, t), dtype=bool)
     labels = np.full((n, t), np.nan, dtype=np.float32)
@@ -384,7 +387,21 @@ def build_evidence(library, vocabulary, model=None, top_k=None):
     scores[~library.valid_audio] = np.nan
     audio, rules = tag_audio_decisions(scores, library.valid_audio, library.silence,
                                        [v["tag"] for v in vocabulary], top_k)
-    support = np.stack((name, np.isfinite(labels), audio), axis=2)
+    if label_mode == "flat":
+        label_support = np.isfinite(labels) & (labels >= .1)
+        library.meta["label_policy"] = {"version": "legacy-flat", "printed_floor": .1}
+    elif label_mode == "fitted":
+        from label_rules import decisions_for_rows
+        policy_path = Path(label_model) if label_model else HERE / "label_decisions_v2.json"
+        raw_policy = policy_path.read_bytes()
+        bundle = json.loads(raw_policy)
+        label_support, label_meta = decisions_for_rows(library.rows, vocabulary, bundle)
+        library.meta["label_policy"] = {**label_meta, "policy_path": str(policy_path.resolve()),
+                                        "policy_sha256": digest(raw_policy)}
+        library.meta["label_rules"] = bundle["cohorts"]
+    else:
+        raise ValueError("Unknown label rule: " + label_mode)
+    support = np.stack((name, label_support, audio), axis=2)
     return support, labels, weak, scores, rules, text_meta
 
 
@@ -439,8 +456,11 @@ def review_candidates(library, vocabulary, support, scores, labels, rules, top=1
             if src != 0:
                 other_states.append("name has no matching synonym")
             if src != 1:
-                other_states.append("label has no printed direct match (top-8 absence is unknown)"
-                                    if library.rows[i] else "labels not evaluated")
+                if np.isfinite(labels[i, j]):
+                    other_states.append(f"printed direct label={float(labels[i, j]):.4g} does not pass the label decision rule (nonconfirmation, not absence)")
+                else:
+                    other_states.append("label has no printed direct match (top-8 absence is unknown)"
+                                        if library.rows[i] else "labels not evaluated")
             if src != 2:
                 if not library.valid_audio[i]:
                     other_states.append("audio not evaluated: missing/invalid vector")
@@ -498,8 +518,13 @@ def main():
         p.add_argument("--out", type=Path)
         p.add_argument("--cached-model", type=Path, help="complete local cached CLAP checkpoint")
         p.add_argument("--audio-top-k", type=int, default=None)
+        p.add_argument("--label-rule", choices=("fitted", "flat"), default="fitted",
+                       help="DEV-fitted per-tag policy (default) or legacy printed >=0.1 control")
+        p.add_argument("--label-model", type=Path, help="frozen policy JSON; default beside this script")
         if command == "disagreements":
             p.add_argument("--top", type=int, default=150)
+            p.add_argument("--also-flat-review", action="store_true",
+                           help="write a flat-rule control review from the identical loaded snapshot")
     args = parser.parse_args()
     if args.cmd == "check":
         if not __debug__:
@@ -515,7 +540,8 @@ def main():
     library = load_library(args.root)
     vocabulary = load_vocabulary()
     print(f"{len(library.paths)} files; {int(library.valid_audio.sum())} valid cached audio vectors; CPU only", flush=True)
-    support, labels, weak, scores, rules, text_meta = build_evidence(library, vocabulary, args.cached_model, args.audio_top_k)
+    support, labels, weak, scores, rules, text_meta = build_evidence(
+        library, vocabulary, args.cached_model, args.audio_top_k, args.label_rule, args.label_model)
     defaults = {"build": "AUDIO_VOCAB_TAGS.csv", "disagreements": "AUDIO_TAG_REVIEW.csv", "stats": "AUDIO_VOCAB_STATS.csv"}
     out = args.out or args.root / defaults[args.cmd]
     tags = [v["tag"] for v in vocabulary]
@@ -540,9 +566,31 @@ def main():
     elif args.cmd == "disagreements":
         review = review_candidates(library, vocabulary, support, scores, labels, rules, args.top)
         write_csv(out, review, ["rank", "relative_path", "tag", "source", "pack", "priority", "reason", "tagger"])
+        if args.also_flat_review:
+            flat_support = support.copy()
+            flat_support[:, :, 1] = np.isfinite(labels) & (labels >= .1)
+            flat_review = review_candidates(library, vocabulary, flat_support, scores, labels, rules, args.top)
+            flat_out = out.with_name(out.stem + ".flat.csv")
+            write_csv(flat_out, flat_review, ["rank", "relative_path", "tag", "source", "pack", "priority", "reason", "tagger"])
+            selected_paths = {r["relative_path"] for r in review}
+            flat_paths = {r["relative_path"] for r in flat_review}
+            reference = support[:, :, 0] | support[:, :, 2]
+            from label_rules import metrics
+            comparison = {"same_snapshot_tag_sha256": library.meta["tag_csv"]["sha256"],
+                          "chosen_rows": len(review), "flat_rows": len(flat_review),
+                          "shared_files": len(selected_paths & flat_paths),
+                          "rule_replaced_files": len(selected_paths - flat_paths),
+                          "first_three_chosen": review[:3], "first_three_flat": flat_review[:3],
+                          "whole_snapshot_label_consistency": metrics(support[:, :, 1], flat_support[:, :, 1], reference),
+                          "note": "Descriptive production snapshot comparison; not another held-out evaluation."}
+            out.with_suffix(".comparison.json").write_text(json.dumps(comparison, indent=2, allow_nan=False), encoding="utf-8")
     else:
         write_csv(out, stats, list(stats[0]))
     write_csv(out.parent / "AUDIO_VOCAB_RULES.csv", rules, list(rules[0]))
+    if library.meta.get("label_rules"):
+        label_rule_rows = [{"tagger": cohort, **r} for cohort, entries in library.meta["label_rules"].items() for r in entries]
+        write_csv(out.parent / "AUDIO_VOCAB_LABEL_RULES.csv", label_rule_rows,
+                  ["tagger", "tag", "threshold", "min_persistence", "status", "dev_candidates", "dev_confirmed", "dev_confirmed_packs"])
     manifest = {**library.meta, "built_at": built_at, "command": args.cmd, "output": str(out.resolve()),
                 "vocabulary_tags": len(tags), "canonical_vocabulary_sha256": digest((SKILL / "bench" / "vocabulary.csv").read_bytes()),
                 "synonyms_sha256": digest((HERE / "vocabulary_synonyms.csv").read_bytes()), "text_encoder": text_meta,
@@ -555,7 +603,8 @@ def main():
                 "cpu_thread_cap": 2, "elapsed_seconds": time.perf_counter() - start,
                 "assumptions": ["Evidence mechanisms are separate, not guaranteed statistically independent.",
                                 "Name matching is lexical; folder/source identity and listener judgement are unverified.",
-                                "Direct printed labels count as candidate support, without calibration.",
+                                "Direct printed labels pass the selected label rule; DEV confirmation is consistency, not calibration or accuracy.",
+                                "Sparse tags retain uncalibrated flat candidates; unknown taggers abstain. Printed timeline occupancy is a lower bound.",
                                 "Knee, geometric prominence >0.05, 10% tail and 5%/1000 rank cap are unvalidated screening heuristics.",
                                 "Missing silence measurement leaves guard unknown; it is never inferred from absence of labels.",
                                 "Tag evidence may refer to different analyzed spans; never certifies whole-file absence.",
@@ -565,6 +614,7 @@ def main():
     print(json.dumps({"output": str(out), "files": len(library.paths), "supported_pairs": manifest["supported_pairs"],
                       "pairs_by_source_count": manifest["pairs_by_source_count"],
                       "zero_tag_files": manifest["files_without_supported_tags"], "taggers": manifest["taggers"],
+                      "label_policy": manifest["label_policy"],
                       "elapsed_seconds": round(manifest["elapsed_seconds"], 2)}, indent=2))
 
 

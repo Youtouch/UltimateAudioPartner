@@ -25,6 +25,9 @@ skills/audio-designer/tagging/*
 !skills/audio-designer/tagging/vocab_tags.py
 !skills/audio-designer/tagging/self_tests.py
 !skills/audio-designer/tagging/vocabulary_synonyms.csv
+!skills/audio-designer/tagging/label_rules.py
+!skills/audio-designer/tagging/label_self_tests.py
+!skills/audio-designer/tagging/label_decisions_v2.json
 AUDIO_VOCAB*
 AUDIO_TAG_REVIEW*
 AUDIO_AMBIENCE_INDEX*
