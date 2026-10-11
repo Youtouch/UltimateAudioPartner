@@ -35,11 +35,11 @@ With an NVIDIA GPU, install PyTorch's CUDA build first (`pip install torch torch
 
 **2. Browse it.** Double-click **`Sound Browser.bat`** (or run `./sound-browser.sh`). The page opens in your web browser; keep the window open while you use it. Files not tagged yet are still listed and playable, and **Reload** picks up a tagging pass still running.
 
-On first use, the tools download two models into the Hugging Face cache (about 1 GB together):
+On first use, the tools download two models into the Hugging Face cache (about 1 GB together; CED also needs `torchaudio`):
 
 | Model | Purpose | Licence |
 |---|---|---|
-| [MIT/ast-finetuned-audioset-10-10-0.4593](https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593) | Sound-event labels (AudioSet) | BSD-3-Clause |
+| [mispeech/ced-base](https://huggingface.co/mispeech/ced-base) | Sound-event labels (AudioSet), pinned to a reviewed revision because it runs code from its model page | Apache-2.0 |
 | [laion/clap-htsat-unfused](https://huggingface.co/laion/clap-htsat-unfused) | Search by description, "more like this" | Apache-2.0 |
 
 ## The tools from the command line
@@ -94,6 +94,12 @@ It writes `AUDIO_VERDICTS.json` there: your likes, rejects and notes.
 | C | Copy the full path |
 
 Each file shows a strip of 10-second blocks: blocks where a selected tag is heard light up, and clicking a block jumps there.
+
+## How the tagger was chosen
+
+The AudioSet tagger was CED-base's predecessor AST until a paired comparison on 513 clips sampled by file name across 15 sound families (`bench/tagger_trial.py`): CED-base named the file's family in its top five where AST did not on 59 clips, the reverse on 21 (exact McNemar p < 0.0001), at half the time per clip. It gained most where AST was weakest: clicks (0 to 15%), footsteps (10 to 42%), insects (10 to 25%). File names are a proxy and fail on some families ("Talking UI" sounds are not speech), so read it as a comparison, not an accuracy. `AUDIO_TAGGER=ast` keeps the old tagger available.
+
+The search fingerprints changed too: short clips are padded with silence instead of looped to the model's 10-second window. A looped 0.4 s click reads as a rattle; on 633 click-named files plus 1,500 others, click hits in the top 100 rose from 38-60 to 69-77 across four click queries. `audio_tag.py reembed` applies it to an existing library in place.
 
 ## Measuring search quality
 

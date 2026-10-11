@@ -7,7 +7,7 @@
 Sources, each ranked on its own, then merged by reciprocal rank fusion (no score calibration needed):
   audio - CLAP: the query against each file's audio fingerprint (AUDIO_TAGS_clap.f32)
   name  - the cleaned file and folder name, by meaning (CLAP text side) plus exact words
-  label - the query mapped to AudioSet labels, scored by the file's AST label scores. Labels only CONFIRM
+  label - the query mapped to AudioSet labels, scored by the file's AudioSet label scores. Labels only CONFIRM
           files the other two found: on designed effects (clicks, UI) the tagger is often wrong.
 A file found by several sources outranks one found by a single source. Each result keeps every
 source's own score and rank: the evidence stays separate (parent and child labels are one source).
@@ -155,7 +155,7 @@ class Index:
 
     def sources(self, query):
         """Each source's score for every file, kept apart, plus each source's weight for this query."""
-        from audio_tag import ast, embed_text
+        from audio_tag import embed_text, tagger
         main = head(query)
         q = embed_text([query, f'the sound of {query}', main])
         q_audio = q[:2].mean(0) / np.linalg.norm(q[:2].mean(0))
@@ -167,7 +167,7 @@ class Index:
         name = (0.5 * (self.name_vectors @ q[0]) + 0.5 * (self.name_vectors @ q[2])
                 + np.array([0.3 * (main_stem in s) + 0.05 * len(others & s) for s in name_stems]))
         # label: AudioSet labels that name the sound word outright; failing that, the nearest by meaning, at half weight
-        label_names = list(ast()[1].config.id2label.values())
+        label_names = list(tagger()[1].config.id2label.values())
         direct = {n: 1.0 for n in label_matches(main_stem, label_names)}
         if direct:
             wanted, weight = direct, 1.0

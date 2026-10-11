@@ -46,7 +46,7 @@ FAMILIES = {
 MODELS = {'ast': 'MIT/ast-finetuned-audioset-10-10-0.4593', 'ced-tiny': 'mispeech/ced-tiny', 'ced-base': 'mispeech/ced-base'}
 # CED runs model code from its Hugging Face repo: pin the reviewed revision so an update cannot swap it silently.
 # None = not yet reviewed (the first run downloads it; read its .py files, then pin).
-REVISIONS = {'ced-tiny': 'ace276d29dd0bb3f3517b0fa8cf300738c409019', 'ced-base': None}
+REVISIONS = {'ced-tiny': 'ace276d29dd0bb3f3517b0fa8cf300738c409019', 'ced-base': 'db3e14a8db4c21b56b165261c39649741a900e7f'}
 
 
 def sample(root, per_family, seed=20261011):

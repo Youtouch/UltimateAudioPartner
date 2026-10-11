@@ -3,10 +3,14 @@
     python audio_tag.py tag FILE [FILE ...]            # AudioSet labels per 10 s window, JSON
     python audio_tag.py tag --root D:/lib --only "*bird*" --out tags.csv   # library pass, resumable
     python audio_tag.py rank "soft playful UI confirmation" FILE [FILE ...]
+    python audio_tag.py relabel --root D:/lib     # relabel an existing tags CSV with the current tagger
+    python audio_tag.py reembed --root D:/lib     # silence-pad short files' fingerprints in place
     python audio_tag.py check
 
 Models download from Hugging Face on first use (cached in ~/.cache/huggingface):
-AST fine-tuned on AudioSet (527 sound-event labels) and LAION CLAP (text-to-audio similarity).
+CED-base (527 AudioSet sound-event labels; AST with AUDIO_TAGGER=ast) and LAION CLAP (text-to-audio similarity).
+CED-base replaced AST after a paired test on 513 name-sampled clips: right where AST was wrong on 59 clips,
+the reverse on 21 (p < 0.0001), at half the time per clip. Every tags row records the tagger that wrote it.
 A label is a model's reading, not a listen: keep it beside the measurements and the user's ear.
 """
 
@@ -14,6 +18,7 @@ import argparse
 import csv
 import fnmatch
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,10 +27,15 @@ import numpy as np
 from audio_map import load_audio
 
 AST = 'MIT/ast-finetuned-audioset-10-10-0.4593'
+# CED runs model code from its Hugging Face repo: pinned to the revision whose code was reviewed (2026-10-11).
+TAGGERS = {'ced-base': ('mispeech/ced-base', 'db3e14a8db4c21b56b165261c39649741a900e7f'), 'ast': (AST, None)}
+TAGGER = os.environ.get('AUDIO_TAGGER', 'ced-base')
 CLAP = 'laion/clap-htsat-unfused'
+CLAP_PADDING = 'pad'
+CLAP_WINDOW = 10  # seconds: each file's fingerprint covers its first 10 s
 AUDIO = {'.wav', '.mp3', '.ogg', '.flac', '.aif', '.aiff', '.m4a', '.aac', '.opus', '.mp4', '.mov'}
 FIELDS = ['relative_path', 'size_bytes', 'mtime_ns', 'seconds_tagged', 'speech', 'music',
-          'silence', 'top_labels', 'timeline', 'clap_row']
+          'silence', 'top_labels', 'timeline', 'clap_row', 'tagger']
 _models = {}
 
 
@@ -34,12 +44,16 @@ def device():
     return 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-def ast():
-    if 'ast' not in _models:
-        from transformers import ASTFeatureExtractor, ASTForAudioClassification
-        _models['ast'] = (ASTFeatureExtractor.from_pretrained(AST),
-                          ASTForAudioClassification.from_pretrained(AST).to(device()).eval())
-    return _models['ast']
+def tagger():
+    """The AudioSet tagger named by TAGGER: (feature extractor, model). Both share AudioSet's 527 label names."""
+    if 'tagger' not in _models:
+        from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
+        name, revision = TAGGERS[TAGGER]
+        remote = TAGGER.startswith('ced')
+        _models['tagger'] = (
+            AutoFeatureExtractor.from_pretrained(name, revision=revision, trust_remote_code=remote),
+            AutoModelForAudioClassification.from_pretrained(name, revision=revision, trust_remote_code=remote).to(device()).eval())
+    return _models['tagger']
 
 
 def clap():
@@ -58,11 +72,13 @@ def windows(y, sr, length=10.0):
 def tag_samples(y, sr=16000, window=10.0):
     """Per-window sigmoid probabilities over AudioSet labels (multi-label)."""
     import torch
-    extractor, model = ast()
-    chunks = windows(y, sr, window)
-    inputs = extractor([c for c in chunks], sampling_rate=sr, return_tensors='pt').to(model.device)
+    extractor, model = tagger()
+    # Under a second, pad with silence: CED's first layer needs about 0.2 s, and both models were trained on 10 s clips.
+    chunks = [c if len(c) >= sr else np.pad(c, (0, sr - len(c))) for c in windows(y, sr, window)]
+    inputs = extractor(chunks, sampling_rate=sr, return_tensors='pt').to(model.device)
     with torch.no_grad():
-        probs = torch.sigmoid(model(**inputs).logits).cpu().numpy()
+        out = model(**inputs).logits
+        probs = (out if TAGGER.startswith('ced') else torch.sigmoid(out)).float().cpu().numpy()  # CED outputs probabilities
     return probs, model.config.id2label, window
 
 
@@ -92,7 +108,9 @@ def tag_file(path, seconds=60):
 def embed_audio(ys, sr=48000):
     import torch
     processor, model = clap()
-    inputs = processor(audio=list(ys), sampling_rate=sr, return_tensors='pt').to(model.device)
+    # Silence-pad short clips: the checkpoint's default 'repeatpad' loops a 0.4 s click into a 10 s rattle.
+    # Measured on 633 click-named files + 1,500 others: click hits in the top 100 rose from 38-60 to 69-77.
+    inputs = processor(audio=list(ys), sampling_rate=sr, return_tensors='pt', padding=CLAP_PADDING).to(model.device)
     with torch.no_grad():
         e = model.get_audio_features(**inputs)
         e = getattr(e, 'pooler_output', e)  # transformers 5 returns an output object
@@ -126,6 +144,15 @@ def decode(path, seconds):
     return y48, resample_poly(y48, 1, 3).astype('float32')
 
 
+def tag_row(rel, size, mtime, r, seconds_tagged, clap_row, tagger_name):
+    return {'relative_path': rel, 'size_bytes': size, 'mtime_ns': mtime, 'seconds_tagged': seconds_tagged,
+            'speech': r['speech'], 'music': r['music'], 'silence': r['silence'],
+            'top_labels': '; '.join(f'{k} {v}' for k, v in r['labels'].items()),
+            'timeline': ' | '.join(f"{w['start']:g}-{w['end']:g}: " + ', '.join(f'{k} {v}' for k, v in w['labels'].items())
+                                   for w in r['timeline']),
+            'clap_row': clap_row, 'tagger': tagger_name}
+
+
 def library(root, only, out, seconds, batch=16):
     """Resumable pass: tags to `out` (CSV), CLAP vectors to `<out>_clap.f32` (512 float32 per row,
     row index in `clap_row`). A changed file appends a new row; readers keep the last row per path."""
@@ -133,7 +160,10 @@ def library(root, only, out, seconds, batch=16):
     done = {}
     if out.exists():
         with out.open(encoding='utf-8', newline='') as f:
-            done = {r['relative_path']: r for r in csv.DictReader(f)}
+            reader = csv.DictReader(f)
+            if 'tagger' not in (reader.fieldnames or []):
+                sys.exit(f'{out} predates the tagger column: run `audio_tag.py relabel --root {root}` first')
+            done = {r['relative_path']: r for r in reader}
     files = sorted(p for p in root.rglob('*') if p.suffix.lower() in AUDIO and p.is_file()
                    and fnmatch.fnmatch(p.relative_to(root).as_posix().lower(), (only or '*').lower()))
     todo = []
@@ -165,16 +195,102 @@ def library(root, only, out, seconds, batch=16):
                 row = v.tell() // (4 * len(vec))
                 v.write(vec.tobytes())
                 v.flush()
-                writer.writerow({'relative_path': rel, 'size_bytes': stat.st_size, 'mtime_ns': stat.st_mtime_ns,
-                                 'seconds_tagged': round(len(y16) / 16000, 2), 'speech': r['speech'],
-                                 'music': r['music'], 'silence': r['silence'],
-                                 'top_labels': '; '.join(f'{k} {v_}' for k, v_ in r['labels'].items()),
-                                 'timeline': ' | '.join(f"{w['start']:g}-{w['end']:g}: " +
-                                                        ', '.join(f'{k} {v_}' for k, v_ in w['labels'].items())
-                                                        for w in r['timeline']),
-                                 'clap_row': row})
+                settings = clap_settings(vectors)
+                if settings['pad_checked_rows'] == row:  # every earlier row is known to be silence-padded
+                    settings['pad_checked_rows'] = row + 1
+                    save_clap_settings(vectors, settings)
+                writer.writerow(tag_row(rel, stat.st_size, stat.st_mtime_ns, r, round(len(y16) / 16000, 2), row, TAGGER))
                 f.flush()
             print(f'{min(b + batch, len(todo))}/{len(todo)}', file=sys.stderr, flush=True)
+
+
+def clap_settings(vectors):
+    """How the fingerprints in `vectors` were made. Rows before pad_checked_rows are known to be silence-padded."""
+    path = vectors.with_suffix('.json')
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {'model': CLAP, 'window_s': CLAP_WINDOW, 'short_clip_padding': CLAP_PADDING, 'pad_checked_rows': 0}
+
+
+def save_clap_settings(vectors, settings):
+    tmp = vectors.with_suffix('.json.tmp')
+    tmp.write_text(json.dumps(settings, indent=1), encoding='utf-8')
+    tmp.replace(vectors.with_suffix('.json'))
+
+
+def reembed(root, tags_csv, batch=32):
+    """Re-fingerprint short files (under CLAP_WINDOW seconds) in place with silence padding.
+    Longer files are never padded, so their rows are only marked checked. Resumable, and safe to rerun
+    after a pass that still used looping: it continues from the settings file's pad_checked_rows."""
+    from concurrent.futures import ThreadPoolExecutor
+    vectors = tags_csv.with_name(tags_csv.stem + '_clap.f32')
+    settings = clap_settings(vectors)
+    total = vectors.stat().st_size // (4 * 512)
+    start = settings['pad_checked_rows']
+    owner = {}
+    with tags_csv.open(encoding='utf-8', newline='') as f:
+        for r in csv.DictReader(f):
+            if r.get('clap_row'):
+                owner[int(r['clap_row'])] = (r['relative_path'], float(r['seconds_tagged'] or 0))
+    short = [(row, owner[row][0]) for row in range(start, total) if row in owner and owner[row][1] < CLAP_WINDOW]
+    print(f'rows {start}-{total}: {len(short)} short files to re-fingerprint, the rest are checked as-is', file=sys.stderr, flush=True)
+    with vectors.open('r+b') as v, ThreadPoolExecutor(3) as pool:
+        for b in range(0, len(short), batch):
+            chunk = short[b:b + batch]
+            decoded = list(pool.map(lambda item: _try(lambda p: load_audio(root / p, seconds=CLAP_WINDOW, sample_rate=48000,
+                                                                          mono=True)[0], item[1]), chunk))
+            good = [(row, y) for (row, _), y in zip(chunk, decoded) if not isinstance(y, Exception) and len(y)]
+            if good:
+                for (row, _), vec in zip(good, embed_audio([y for _, y in good])):
+                    v.seek(row * 4 * 512)
+                    v.write(vec.astype('<f4').tobytes())
+                v.flush()
+            print(f'{min(b + batch, len(short))}/{len(short)}', file=sys.stderr, flush=True)
+    settings.update({'model': CLAP, 'window_s': CLAP_WINDOW, 'short_clip_padding': CLAP_PADDING, 'pad_checked_rows': total})
+    save_clap_settings(vectors, settings)
+    print(f'pad_checked_rows = {total}', file=sys.stderr)
+
+
+def relabel(root, tags_csv, seconds=60, batch=16):
+    """Relabel every file in an existing tags CSV with the current tagger. Fingerprints, clap_row, size and mtime
+    are kept. Writes <csv>.relabel.csv as it goes (resumable), then swaps it in and keeps the old file as
+    <csv>.before-relabel.csv. A file that cannot be decoded keeps its old labels and its old tagger name."""
+    from concurrent.futures import ThreadPoolExecutor
+    with tags_csv.open(encoding='utf-8', newline='') as f:
+        reader = csv.DictReader(f)
+        old_tagger = 'ast' if 'tagger' not in (reader.fieldnames or []) else None
+        rows = {r['relative_path']: r for r in reader}
+    side = tags_csv.with_suffix('.relabel.csv')
+    done = set()
+    if side.exists():
+        with side.open(encoding='utf-8', newline='') as f:
+            done = {r['relative_path'] for r in csv.DictReader(f)}
+    todo = [r for rel, r in rows.items() if rel not in done]
+    print(f'{len(rows)} rows, {len(todo)} to relabel with {TAGGER}', file=sys.stderr, flush=True)
+    new = not side.exists()
+    with side.open('a', encoding='utf-8', newline='') as f, ThreadPoolExecutor(4) as pool:
+        writer = csv.DictWriter(f, FIELDS)
+        if new:
+            writer.writeheader()
+        for b in range(0, len(todo), batch):
+            chunk = todo[b:b + batch]
+            decoded = list(pool.map(lambda r: _try(lambda p: load_audio(root / p, seconds=seconds, sample_rate=16000,
+                                                                         mono=True)[0], r['relative_path']), chunk))
+            for old, y in zip(chunk, decoded):
+                if isinstance(y, Exception) or not len(y):
+                    print(f'KEEP OLD {old["relative_path"]}: {y if isinstance(y, Exception) else "empty"}', file=sys.stderr, flush=True)
+                    writer.writerow({k: old.get(k, '') for k in FIELDS} | {'tagger': old.get('tagger') or old_tagger})
+                    continue
+                r = summarise(*tag_samples(y, 16000))
+                writer.writerow(tag_row(old['relative_path'], old['size_bytes'], old['mtime_ns'], r,
+                                        round(len(y) / 16000, 2), old['clap_row'], TAGGER))
+            f.flush()
+            print(f'{min(b + batch, len(todo))}/{len(todo)}', file=sys.stderr, flush=True)
+    backup = tags_csv.with_suffix('.before-relabel.csv')
+    tags_csv.replace(backup)
+    side.replace(tags_csv)
+    print(f'{tags_csv} relabelled with {TAGGER}; previous labels kept in {backup}', file=sys.stderr)
 
 
 def _try(fn, *args):
@@ -198,7 +314,76 @@ def check():
     text = embed_text(['a steady pure sine tone', 'loud white noise hiss'])
     sims = audio @ text.T
     assert sims[0, 0] > sims[1, 0] and sims[1, 1] > sims[0, 1], sims
-    print(f'PASS audio_tag check on {device()}: tone {list(tone_labels)[:2]}, noise {list(noise_labels)[:2]}, CLAP ranks both')
+    reembed_check()
+    relabel_check()
+    print(f'PASS audio_tag check on {device()}: tone {list(tone_labels)[:2]}, noise {list(noise_labels)[:2]}, CLAP ranks both, '
+          'reembed rewrites only short rows')
+
+
+def relabel_check():
+    """An old-format CSV (no tagger column, junk labels) must come back with current labels, same clap_row."""
+    import tempfile
+    import soundfile as sf
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        sr = 16000
+        sf.write(root / 'tone.wav', (0.3 * np.sin(2 * np.pi * 440 * np.arange(sr * 3) / sr)).astype('float32'), sr)
+        out = root / 'AUDIO_TAGS.csv'
+        old_fields = [f for f in FIELDS if f != 'tagger']
+        with out.open('w', encoding='utf-8', newline='') as f:
+            w = csv.DictWriter(f, old_fields)
+            w.writeheader()
+            w.writerow({'relative_path': 'tone.wav', 'size_bytes': 1, 'mtime_ns': 2, 'seconds_tagged': 3, 'speech': 0,
+                        'music': 0, 'silence': 0, 'top_labels': 'Junk 0.9', 'timeline': '0-10: Junk 0.9', 'clap_row': 7})
+            w.writerow({'relative_path': 'missing.wav', 'size_bytes': 1, 'mtime_ns': 2, 'seconds_tagged': 3, 'speech': 0,
+                        'music': 0, 'silence': 0, 'top_labels': 'Kept 0.5', 'timeline': '', 'clap_row': 8})
+        try:
+            library(root, None, out, 10)
+            raise AssertionError('a pass must refuse a CSV without the tagger column')
+        except SystemExit:
+            pass
+        relabel(root, out)
+        rows = {r['relative_path']: r for r in csv.DictReader(out.open(encoding='utf-8'))}
+        assert rows['tone.wav']['tagger'] == TAGGER and rows['tone.wav']['clap_row'] == '7', rows['tone.wav']
+        assert 'Sine wave' in rows['tone.wav']['top_labels'], rows['tone.wav']['top_labels']
+        assert rows['missing.wav']['top_labels'] == 'Kept 0.5' and rows['missing.wav']['tagger'] == 'ast', rows['missing.wav']
+        assert (root / 'AUDIO_TAGS.before-relabel.csv').exists() and not (root / 'AUDIO_TAGS.relabel.csv').exists()
+
+
+def reembed_check():
+    """A library pass, a short row overwritten with a looped fingerprint, then reembed must restore silence padding."""
+    import tempfile
+    import soundfile as sf
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        sr = 48000
+        click = np.zeros(sr // 2, 'float32')
+        click[100:400] = np.hanning(300) * 0.8
+        sf.write(root / 'click.wav', click, sr)
+        sf.write(root / 'tone.wav', (0.2 * np.sin(2 * np.pi * 330 * np.arange(sr * 12) / sr)).astype('float32'), sr)
+        out = root / 'AUDIO_TAGS.csv'
+        library(root, None, out, 12)
+        vectors = out.with_name('AUDIO_TAGS_clap.f32')
+        assert clap_settings(vectors)['pad_checked_rows'] == 2, clap_settings(vectors)
+        rows = {r['relative_path']: int(r['clap_row']) for r in csv.DictReader(out.open(encoding='utf-8'))}
+        m = np.fromfile(vectors, '<f4').reshape(-1, 512).copy()
+        padded, long_row = m[rows['click.wav']].copy(), m[rows['tone.wav']].copy()
+        # Simulate a row written by the old looping code, and a settings file that has not checked it.
+        import torch
+        processor, model = clap()
+        with torch.no_grad():
+            x = processor(audio=[click], sampling_rate=sr, return_tensors='pt', padding='repeatpad').to(model.device)
+            e = model.get_audio_features(**x)
+            looped = torch.nn.functional.normalize(getattr(e, 'pooler_output', e), dim=-1).cpu().numpy()[0]
+        assert float(looped @ padded) < 0.999, 'looping and padding should give different fingerprints'
+        m[rows['click.wav']] = looped
+        m.astype('<f4').tofile(vectors)
+        save_clap_settings(vectors, dict(clap_settings(vectors), pad_checked_rows=0))
+        reembed(root, out)
+        after = np.fromfile(vectors, '<f4').reshape(-1, 512)
+        assert float(after[rows['click.wav']] @ padded) > 0.999, 'short row not restored to silence padding'
+        assert np.array_equal(after[rows['tone.wav']], long_row), 'long row must be left as-is'
+        assert clap_settings(vectors)['pad_checked_rows'] == 2
 
 
 def main():
@@ -214,8 +399,18 @@ def main():
     r.add_argument('query')
     r.add_argument('files', nargs='+', type=Path)
     r.add_argument('--seconds', type=float, default=10)
+    rl = sub.add_parser('relabel', help='relabel an existing tags CSV with the current tagger, keeping fingerprints')
+    rl.add_argument('--root', type=Path, required=True)
+    rl.add_argument('--tags', type=Path, help='tags CSV (default <root>/AUDIO_TAGS.csv)')
+    e = sub.add_parser('reembed', help='re-fingerprint short files with silence padding, in place')
+    e.add_argument('--root', type=Path, required=True)
+    e.add_argument('--tags', type=Path, help='tags CSV (default <root>/AUDIO_TAGS.csv)')
     sub.add_parser('check')
     a = parser.parse_args()
+    if a.cmd == 'relabel':
+        return relabel(a.root, a.tags or a.root / 'AUDIO_TAGS.csv')
+    if a.cmd == 'reembed':
+        return reembed(a.root, a.tags or a.root / 'AUDIO_TAGS.csv')
     if a.cmd == 'check':
         return check()
     if a.cmd == 'rank':
