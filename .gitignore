@@ -21,6 +21,12 @@ skills/audio-designer/bench/*
 !skills/audio-designer/bench/README.md
 !skills/audio-designer/bench/vocabulary.csv
 !skills/audio-designer/bench/queries.csv
+skills/audio-designer/tagging/*
+!skills/audio-designer/tagging/vocab_tags.py
+!skills/audio-designer/tagging/self_tests.py
+!skills/audio-designer/tagging/vocabulary_synonyms.csv
+AUDIO_VOCAB*
+AUDIO_TAG_REVIEW*
 AUDIO_AMBIENCE_INDEX*
 AUDIO_MUSIC_*
 

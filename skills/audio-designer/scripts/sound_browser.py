@@ -55,6 +55,20 @@ class Library:
             with self.tags.open(encoding='utf-8', newline='') as f:
                 for r in csv.DictReader(f):
                     tagged[r['relative_path']] = r  # last row wins: a changed file appends a new one
+        # Studio tags cross-referenced by tagging/vocab_tags.py: per file, tag -> which sources support it.
+        # Bits: 1 name, 2 label, 4 audio. A tag with two or more bits is agreed; one bit is a candidate.
+        vocab, vocab_index, vocab_tags = [], {}, {}
+        vpath = self.root / 'AUDIO_VOCAB_TAGS.csv'
+        if vpath.exists():
+            with vpath.open(encoding='utf-8', newline='') as f:
+                for r in csv.DictReader(f):
+                    tag = r['tag']
+                    if tag not in vocab_index:
+                        vocab_index[tag] = len(vocab)
+                        vocab.append(tag)
+                    mask = (r['name'] == '1') | (bool(r['label']) << 1) | (bool(r['audio']) << 2)
+                    if mask:
+                        vocab_tags.setdefault(r['relative_path'], []).extend([vocab_index[tag], mask])
         names, index, rows = [], {}, []
 
         def ids(items):
@@ -78,8 +92,9 @@ class Library:
                          float(led.get('duration_seconds') or 0) or None,
                          float(tag['speech']) if tag else None, float(tag['music']) if tag else None,
                          ids(pairs(tag['top_labels'])) if tag else [], timeline,
-                         int(tag['clap_row']) if tag and tag.get('clap_row') else -1])
-        return {'labels': names, 'rows': rows, 'verdicts': self.verdicts(), 'root': str(self.root),
+                         int(tag['clap_row']) if tag and tag.get('clap_row') else -1,
+                         vocab_tags.get(rel, [])])
+        return {'labels': names, 'vocab': vocab, 'rows': rows, 'verdicts': self.verdicts(), 'root': str(self.root),
                 'tagged': len(tagged), 'total': len(rows)}
 
     def matrix(self):

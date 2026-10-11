@@ -7,4 +7,5 @@ set "HERE=%~dp0"
 call "%HERE%tools\library.bat" "%~1" || goto :eof
 python "%HERE%skills\audio-designer\scripts\audio_tag.py" tag --root "%LIBRARY%" --out "%LIBRARY%\AUDIO_TAGS.csv"
 python "%HERE%skills\audio-designer\scripts\audio_search.py" names --root "%LIBRARY%"
+python "%HERE%skills\audio-designer\tagging\vocab_tags.py" build --root "%LIBRARY%"
 pause

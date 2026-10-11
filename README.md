@@ -19,6 +19,7 @@ Everything runs locally. No account, no server, nothing running in the backgroun
 - **`audio_tag.py`.** Tags any audio or video file with AudioSet sound-event labels (527 classes: birds, speech, choir, crickets, whoosh, piano…) for the whole file and for each 10-second window. It also ranks files against a written description with CLAP. It can tag an entire library into one CSV, resuming where it stopped.
 - **`audio_map.py` and `audio_index.py`.** Measurements an agent can trust: tempo, beat times, loud and quiet sections and strongest hits of a track (for cutting video to music); loudness, true peak, frequency bands, event density, steadiness and a loop hint for ambience and effects. Each has a built-in self-test (`--selftest`, `check`).
 - **`audio_search.py`: search by description, cross-referenced.** No single source is reliable on its own: names can be codes, the audio model confuses quiet files with "soft" sounds, and the AudioSet tagger mislabels short designed effects. So three sources rank the library separately: the **audio** fingerprint (CLAP), the **cleaned file name** ("FL_GFX_UI_Click_30.wav" becomes "ui click", matched by meaning and by exact words), and the **AudioSet labels**, which only confirm what the other two found. Reciprocal rank fusion merges them, so a file several sources agree on comes first, and every result keeps each source's own rank as evidence. The sound word of a query leads: in "a single soft wooden click", "click" counts most.
+- **`tagging/vocab_tags.py`: tags that say who backs them.** Each file gets canonical studio tags (click, bird song, rain, choir, piano… 89 in all), each supported separately by the **name**, the **model labels** and the **audio**. Two or more sources make a tag; one makes a candidate. It also lists the files where sources contradict each other (the name says bird, nothing else hears one): the few clips worth a human listen.
 - **Sound browser.** A local web page over the tagged library: filter by kind, pack, length and tag, search by description (with each source's rank shown on every result), find "more like this", audition with the keyboard, and like or reject sounds. Your verdicts are saved to a JSON file the agent reads before proposing anything.
 
 ## Get started
@@ -92,6 +93,8 @@ It writes `AUDIO_VERDICTS.json` there: your likes, rejects and notes.
 | L / X | Like / reject |
 | M | More like this |
 | C | Copy the full path |
+
+Tags show solid when two or more sources agree and faded with a dashed outline when only one source claims them (hover for which). The tag panel counts agreed tags unless you include candidates; the raw AudioSet labels sit in a collapsed section.
 
 Each file shows a strip of 10-second blocks: blocks where a selected tag is heard light up, and clicking a block jumps there.
 

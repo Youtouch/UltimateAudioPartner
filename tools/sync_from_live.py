@@ -10,6 +10,7 @@ import argparse
 import shutil
 from pathlib import Path
 
+PUBLISH_TAGGING = {'vocab_tags.py', 'self_tests.py', 'vocabulary_synonyms.csv'}
 PUBLISH_BENCH = {'bench_select.py', 'bench_eval.py', 'bench_clap.py', 'methods.py', 'tagger_trial.py', 'README.md', 'vocabulary.csv', 'queries.csv'}
 
 
@@ -17,6 +18,8 @@ def ignore(folder, names):
     out = {n for n in names if n == '__pycache__'}
     if Path(folder).name == 'bench':
         out |= {n for n in names if n not in PUBLISH_BENCH}
+    if Path(folder).name == 'tagging':
+        out |= {n for n in names if n not in PUBLISH_TAGGING}
     return out
 
 
