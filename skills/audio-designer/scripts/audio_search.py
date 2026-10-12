@@ -290,6 +290,20 @@ def like(index, approved, rejected=(), avoid=None, min_seconds=0, top=20, exact=
     return out
 
 
+def collapse_duplicates(results, groups, top):
+    """Keep the best-ranked file of each duplicate set (AUDIO_GROUPS.csv), listing the copies it stands for."""
+    out, kept = [], {}
+    for r in results:
+        dup = groups.get(r['path'], {}).get('duplicate_set')
+        if dup and dup in kept:
+            kept[dup].setdefault('also_in', []).append(r['path'])
+            continue
+        if dup:
+            kept[dup] = r
+        out.append(r)
+    return out[:top]
+
+
 def check():
     pack = [f'FL_GFX_{kind}_{n}.wav' for kind in ('UI_Click', 'Magic_Spell', 'Coin_Drop', 'Door_Slam') for n in range(3)]
     cleaned = drop_pack_constants([clean_name('Ultimate/' + f, 'Ultimate') for f in pack], ['Ultimate'] * len(pack))
@@ -307,6 +321,10 @@ def check():
     two = 2 / (RRF_K + 1)
     one = 1 / (RRF_K + 0)
     assert two > one
+    rows = [{'path': p} for p in ('a.wav', 'a.mp3', 'b.wav', 'c.wav')]
+    one_set = {'a.wav': {'duplicate_set': 'd1'}, 'a.mp3': {'duplicate_set': 'd1'}}
+    got = collapse_duplicates(rows, one_set, 3)
+    assert [r['path'] for r in got] == ['a.wav', 'b.wav', 'c.wav'] and got[0]['also_in'] == ['a.mp3'], got
     # like: closer to the approved wins; a file nearer a rejected example than the approved loses half that lead.
     assert like_score(.7, .5) == .7 and abs(like_score(.6, .9) - .45) < 1e-9 and like_score(.6, .9) < like_score(.5, .4)
     filter_check()
@@ -390,7 +408,12 @@ def main():
         return print(f'{len(index.names)} names embedded, cache at {a.root / "AUDIO_NAMES_clap.npz"}')
     if a.cmd == 'like':
         return print(json.dumps(like(index, a.approved, a.rejected, a.avoid, a.min_seconds, a.top), indent=1))
-    results, wanted = index.find(a.query, a.top)
+    results, wanted = index.find(a.query, a.top * 2)  # room for the copies collapsed below
+    groups = {}
+    if (a.root / 'AUDIO_GROUPS.csv').exists():
+        with (a.root / 'AUDIO_GROUPS.csv').open(encoding='utf-8', newline='') as f:
+            groups = {r['relative_path']: r for r in csv.DictReader(f)}
+    results = collapse_duplicates(results, groups, a.top)
     text, filters = index.parse(a.query)
     print(json.dumps({'sound': text, 'filters': filters, 'labels_used': wanted, 'results': results}, indent=1))
 
