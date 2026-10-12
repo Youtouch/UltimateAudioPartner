@@ -88,3 +88,29 @@ traffic,Audible roadway traffic.,"Traffic noise, roadway noise",direct
 door,Audible opening or closing door.,Door,direct
 mechanical,Audible mechanism operation.,Mechanisms,approximate
 unknown_source,A source is audible but its identity cannot be assigned.,,studio_only
+dirt,"Contact with dirt, mud or soil.",,studio_only
+gravel,Contact with gravel or loose pebbles.,Crunch,approximate
+snow,Contact with snow.,Crunch,approximate
+grass,Contact with grass or low foliage.,Rustle,approximate
+stone,"Contact with stone, rock or concrete.",,studio_only
+glass,"Glass material: clinks, rings or breaks.",Glass;Shatter,direct
+water,Water or another liquid in the sound.,"Water;Splash, splatter;Pour",direct
+flesh,"Body, flesh or gore impact.","Squish;Slap, smack",approximate
+pickup,Game item pickup or collect cue.,,studio_only
+power_up,Game power-up or level-up cue.,,studio_only
+jump,Game jump cue or a jumping action.,Boing,approximate
+laser,"Laser, blaster or zap shot.",Zing,approximate
+gunshot,Firearm shot.,"Gunshot, gunfire;Machine gun;Cap gun",direct
+sword,"Sword or blade swing, clash or draw.",,studio_only
+punch,Punch or fist impact.,"Slap, smack;Whack, thwack",approximate
+magic,Magic spell or enchantment effect.,,studio_only
+retro_8bit,Retro 8-bit or chiptune game sound.,"Video game music;Beep, bleep",approximate
+ui_hover,Interface hover or rollover cue.,,studio_only
+ui_back,Interface back or close cue.,,studio_only
+swing,Fast swing or swipe through the air.,"Whoosh, swoosh, swish",approximate
+card,"Playing cards: flip, deal or shuffle.",Shuffling cards,direct
+drop,Something dropped or landing.,,studio_only
+cymbal,"Cymbal crash, ride or hi-hat.",Cymbal;Hi-hat,direct
+kick,"Kick drum, or a kicking hit.",Bass drum,direct
+pickaxe,Pickaxe or mining strike.,,studio_only
+ui_button,Interface button press.,,studio_only

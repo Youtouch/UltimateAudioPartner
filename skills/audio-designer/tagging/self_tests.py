@@ -311,6 +311,20 @@ def review_tagger_priority(api):
         "label review priority must rank inside each tagger cohort rather than compare raw AST/CED scores"
 
 
+def materials(api):
+    """A footstep from the name and gravel from the audio make footsteps_on_gravel, with both sources counted."""
+    vocabulary = [{"tag": "footsteps"}, {"tag": "gravel"}, {"tag": "wood"}]
+    lib = api.Library(["Pack/Steps_01.wav", "Pack/Steps_02.wav", "Pack/Gravel.wav"], ["Pack"] * 3, [{}] * 3,
+                      np.zeros((3, 1)), np.ones(3, bool), np.zeros(3), {})
+    support = np.zeros((3, 3, 3), dtype=bool)
+    support[0, 0, 0] = support[0, 1, 2] = True   # name says footsteps, audio hears gravel
+    support[1, 0, 0] = True                       # footsteps only: no material
+    support[2, 1, 0] = True                       # gravel only: not a footstep
+    scores = np.full((3, 3), .4)
+    rows = list(api.material_rows(lib, vocabulary, support, np.full((3, 3), np.nan), scores, "now"))
+    assert [(r["relative_path"], r["tag"], r["sources"], r["name"], r["audio"]) for r in rows] ==         [("Pack/Steps_01.wav", "footsteps_on_gravel", 2, 1, .4)], rows
+
+
 def run():
     if not __debug__:
         raise RuntimeError("Run check without Python -O; assertions are required.")
@@ -318,7 +332,7 @@ def run():
         import vocab_tags as api
     except ImportError as exc:
         raise AssertionError("vocab_tags implementation is not yet available") from exc
-    for test in (names_labels, library, audio_rules, statistics, review, review_attribution, review_tagger_priority):
+    for test in (names_labels, library, audio_rules, statistics, review, review_attribution, review_tagger_priority, materials):
         test(api)
         print(test.__name__ + ": ok")
     from label_self_tests import run as run_labels

@@ -4,8 +4,10 @@
     python sound_browser.py --root D:/MySounds --port 8790 --no-open
 
 Runs only while this window is open (Ctrl+C stops it) and listens on 127.0.0.1 only.
-Reads AUDIO_LEDGER_files.csv, AUDIO_TAGS.csv and AUDIO_TAGS_clap.f32 from the root; writes
-your likes, rejects and notes to AUDIO_VERDICTS.json there, where agents read them too.
+Reads AUDIO_LEDGER_files.csv, AUDIO_TAGS.csv and AUDIO_TAGS_clap.f32 from the root, and when present
+AUDIO_DESCRIPTORS.csv (measured words), AUDIO_VOCAB_TAGS.csv (studio tags) and AUDIO_GROUPS.csv (duplicates,
+variation sets); writes your likes, rejects and notes to AUDIO_VERDICTS.json there, where agents read them
+too. Exports go only to a folder you choose outside the library.
 """
 
 import argparse
@@ -27,8 +29,14 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 
 from library_metadata import read_metadata
+import audio_describe
 
 HERE = Path(__file__).resolve().parent
+SHOWN = list(audio_describe.NUMBERS)  # the measures each row carries, in this order
+# Studio tags that describe a character or a material, not a kind of sound: never offered as example searches.
+NOT_A_SOUND = {'single_event', 'repeated_events', 'soft', 'sharp_attack', 'very_quiet', 'silence_or_room_tone', 'unknown_source',
+               'noise', 'calm', 'music', 'instrumental', 'ambience_bed', 'wood', 'metal', 'glass', 'stone', 'dirt', 'gravel',
+               'snow', 'grass', 'water', 'flesh', 'retro_8bit'}
 PAIR = re.compile(r'(.+?) (\d+(?:\.\d+)?)(?:, |; |$)')
 DIM = 512
 
@@ -68,6 +76,15 @@ class Library:
                     if mask:
                         vocab_tags.setdefault(r['relative_path'], []).extend([vocab_index[tag], mask])
         names, index, rows = [], {}, []
+        paths = sorted(set(ledger) | set(tagged))
+        descriptors = audio_describe.read_descriptors(self.root)
+        table = audio_describe.table_for(paths, descriptors) if descriptors else None
+        masks = [audio_describe.word_mask(w[0], table) for w in audio_describe.WORDS] if table is not None else []
+        groups = {}
+        gpath = self.root / 'AUDIO_GROUPS.csv'
+        if gpath.exists():
+            with gpath.open(encoding='utf-8', newline='') as f:
+                groups = {r['relative_path']: r for r in csv.DictReader(f)}
 
         def ids(items):
             out = []
@@ -78,8 +95,9 @@ class Library:
                 out += [index[name], score]
             return out
 
-        for rel in sorted(set(ledger) | set(tagged)):
+        for n, rel in enumerate(paths):
             led, tag = ledger.get(rel, {}), tagged.get(rel)
+            group = groups.get(rel)
             timeline = []
             if tag:
                 for part in tag.get('timeline', '').split(' | '):
@@ -91,9 +109,38 @@ class Library:
                          float(tag['speech']) if tag else None, float(tag['music']) if tag else None,
                          ids(pairs(tag['top_labels'])) if tag else [], timeline,
                          int(tag['clap_row']) if tag and tag.get('clap_row') else -1,
-                         vocab_tags.get(rel, [])])
+                         vocab_tags.get(rel, []),
+                         [k for k, m in enumerate(masks) if m[n]],
+                         [None if not np.isfinite(table[m][n]) else round(float(table[m][n]), 4) for m in SHOWN]
+                         if table is not None and rel in descriptors else None,
+                         [group['duplicate_set'], group['duplicate_of'], group['variation_set'], int(group['variation_size'] or 0)]
+                         if group else None])
+        words = [{'word': w[0], 'aliases': list(w[1]), 'explain': w[3], 'measures': [m for m, _, _ in w[2]],
+                  'rule': ' and '.join(f'{m} {op} {v:g}' for m, op, v in w[2])} for w in audio_describe.WORDS]
         return {'labels': names, 'vocab': vocab, 'rows': rows, 'verdicts': self.verdicts(), 'root': str(self.root),
-                'tagged': len(tagged), 'total': len(rows)}
+                'tagged': len(tagged), 'total': len(rows), 'words': words, 'measured': len(descriptors),
+                'numbers': {m: list(audio_describe.NUMBERS[m]) + [audio_describe.MEASURE_EXPLAIN.get(m, '')] for m in SHOWN},
+                'shown': SHOWN, 'examples': self.examples(rows, vocab, words)}
+
+    @staticmethod
+    def examples(rows, vocab, words):
+        """Three example searches from this library's commonest agreed sound categories, each with the plain word
+        its files most often earn: 'short click', 'loopable rain', ..."""
+        from collections import Counter
+        counts, earned = Counter(), {}
+        for r in rows:
+            v = r[9]
+            for k in range(0, len(v), 2):
+                tag = vocab[v[k]]
+                if bin(v[k + 1]).count('1') >= 2 and tag not in NOT_A_SOUND:
+                    counts[tag] += 1
+                    earned.setdefault(tag, Counter()).update(
+                        words[w]['word'] for w in r[10] if words[w]['word'] not in ('single', 'loud', 'quiet'))
+        out = []
+        for tag, _ in counts.most_common(3):
+            word = earned[tag].most_common(1)
+            out.append(((word[0][0] + ' ') if word else '') + tag.replace('_', ' '))
+        return out
 
     def matrix(self):
         if not self.vectors.exists():
@@ -131,8 +178,11 @@ class Library:
     def search(self, query):
         """Description search, with audio, name and label evidence kept separate."""
         results, wanted = self.index().find(query, top=1000)
-        data = self.ranked_payload(results)
-        data.update(evidence={r['row']: r['evidence'] for r in results}, labels=list(wanted))
+        # The page sorts by score: give it the search's own order (files matching the plain words first).
+        data = self.ranked_payload([dict(r, score=float(len(results) - k)) for k, r in enumerate(results)])
+        data['matching'] = sum(1 for r in results if r.get('matches_words'))
+        sound, filters = self.index().parse(query)
+        data.update(evidence={r['row']: r['evidence'] for r in results}, labels=list(wanted), sound=sound, filters=filters)
         return data
 
     def more_like(self, path=None, avoid=''):
@@ -159,6 +209,29 @@ class Library:
         data = self.ranked_payload(results)
         data.update(approved=approved, rejected=rejected)
         return data
+
+    def varied(self, path, n):
+        """The n most different takes in this file's variation set, for round-robin playback."""
+        import sfx_groups
+        self.file(path)
+        picked = sfx_groups.varied(self.root, path, n)
+        return self.ranked_payload([{'path': p, 'score': float(len(picked) - k)} for k, p in enumerate(picked)]) | {'picked': picked}
+
+    def export(self, body):
+        import export_sfx
+        paths = body.get('paths') or []
+        if not paths:
+            raise ValueError('Select some sounds first')
+        for p in paths:
+            self.file(p)
+        out = Path(str(body.get('out') or '').strip().strip('"'))
+        if not str(out).strip() or not out.is_absolute():
+            raise ValueError('Give the full path of the folder to export to')
+        rows = export_sfx.export(self.root, paths, out, fmt=body.get('format', 'wav16'), rate=int(body.get('rate') or 48000),
+                                 mode='lufs' if body.get('mode') == 'lufs' else 'peak', peak_db=float(body.get('peak', -1)),
+                                 lufs=float(body.get('lufs', -18)), pattern=body.get('pattern') or '{category}_{name}_{nn}',
+                                 category=(body.get('category') or '').strip() or None)
+        return {'out': str(out.resolve()), 'files': [r['output_file'] for r in rows], 'manifest': str(out.resolve() / 'MANIFEST.csv')}
 
     def verdicts(self):
         try:
@@ -217,6 +290,8 @@ def handler(lib):
                     self.send_json(lib.more_like(avoid=q.get('avoid', '')))
                 elif url.path == '/api/like':
                     self.send_json(lib.more_like(path=q['p'], avoid=q.get('avoid', '')))
+                elif url.path == '/api/varied':
+                    self.send_json(lib.varied(q['p'], int(q.get('n', 4))))
                 elif url.path == '/api/similar':
                     self.send_json(lib.similar(int(q['row'])))
                 elif url.path == '/audio':
@@ -238,6 +313,10 @@ def handler(lib):
                 if self.path == '/api/verdict':
                     lib.file(body['path'])  # only real library files get a verdict
                     self.send_json(lib.set_verdict(body['path'], body.get('verdict', ''), body.get('note', '')))
+                elif self.path == '/api/export':
+                    self.send_json(lib.export(body))
+                elif self.path == '/api/choose-folder':
+                    self.send_json({'folder': choose_folder()})
                 elif self.path == '/api/reveal':
                     path = lib.file(body['path'])
                     if os.name == 'nt':
@@ -284,6 +363,22 @@ def handler(lib):
                     left -= len(chunk)
 
     return Handler
+
+
+def choose_folder():
+    """The system's folder picker, when Python has Tk; '' when cancelled. The page also accepts a typed path."""
+    try:
+        import tkinter
+        from tkinter import filedialog
+    except ImportError as exc:
+        raise ValueError('No folder picker here (Python without Tk): type the folder path instead') from exc
+    window = tkinter.Tk()
+    window.withdraw()
+    window.attributes('-topmost', True)
+    try:
+        return filedialog.askdirectory(title='Export sounds to') or ''
+    finally:
+        window.destroy()
 
 
 class Server(ThreadingHTTPServer):

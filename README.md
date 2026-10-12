@@ -1,8 +1,10 @@
 # Ultimate Audio Partner
 
 Tag a local sound library with sound-event labels and audio fingerprints.
+Measure every sound: length, loudness, attack, decay, brightness, pitch, loops.
 Browse, audition, and save likes, rejects, and notes in a local web page.
-Search by words, by an example sound, or by sounds you approved.
+Search by words ("short punchy bright click"), by an example sound, or by sounds you approved.
+Spot duplicates, pick varied takes, and export trimmed, normalised files to your game.
 Render a CSV cue sheet into aligned stems and a normalised final mix.
 Measure that mix, then listen: no tool here listens for you.
 
@@ -38,10 +40,13 @@ python -m pip install -r requirements.txt
 
 Search, tagging and first-time name indexing use the models; rendering and mix
 checks use FFmpeg and CPU.
-In the CPU-only synthetic smoke test, tagging 9 readable files (plus one
-corrupt file) took **11.05 seconds, 1.23 seconds/file**, including process/model
-startup, with two CPU threads and cached models. Files ranged from 0.2 to
-90 seconds. This small test is an example, not a large-library speed guarantee.
+In the CPU-only synthetic smoke test (9 readable files of 0.2 to 90 seconds,
+plus one corrupt file, two CPU threads, cached models), tagging took **14.5 s,
+1.61 s/file** and measuring descriptors **7.1 s, 0.79 s/file**, both including
+process and model startup. On a 35,000-file, 190-hour library, the descriptor
+pass took **0.09 s/file** of wall time with 12 single-thread workers (about
+0.2 s for a sub-second effect and 1.7 s for a 100 s music file, per worker).
+These are examples, not speed guarantees.
 
 FFmpeg discovery checks the FFMPEG environment variable, then the Windows
 WinGet Gyan bundle on Windows, then PATH. FFMPEG must point to the executable;
@@ -76,7 +81,8 @@ The library must be writable: indexes and your verdicts live beside the sounds.
    bash tag-library.sh "/path/to/MySounds"
    ~~~
 
-   The launcher tags files, indexes their names and builds the vocabulary tags.
+   The launcher tags files, indexes their names, measures every sound, builds
+   the vocabulary tags and groups duplicates and variation sets.
    It remembers the absolute folder in library.txt for the next run.
    Check the final tagged / unchanged / skipped summary.
 
@@ -99,15 +105,66 @@ The library must be writable: indexes and your verdicts live beside the sounds.
    Render it with the command below. Inspect cue_report.md, resolve FAIL
    verdicts, and listen to final.wav. A passing measurement does not judge fit.
 
+## For game developers: from library to game in ten minutes
+
+No audio training needed. After the tutorial's first two steps:
+
+1. **Find.** Type what you need, sound first, then plain words:
+   `short punchy bright click`, `loopable rain`, `deep explosion`. The sound
+   word ("click") is searched; the plain words are *filters on measurements*
+   (below), so "short" really means under half a second: matching files come
+   first, the rest follow. Not sure what to type?
+   Tick **Explain**: it shows example searches from your own library and an
+   **I need a sound for…** menu (a button press, picking up an item, a hit,
+   a footstep, an explosion, ambience) that fills the search in for you.
+2. **Audition.** Down arrow plays the next result. Hover a word chip to see the
+   number behind it; with Explain on, the footer says what each number means
+   for how the sound feels in a game. L likes, X rejects.
+3. **Pick variations.** A sound played often (footsteps, clicks, hits) should not
+   repeat the same file. A row marked **12 takes · pick varied** belongs to a
+   set of takes; ask for 4 and you get the four most different, for round-robin
+   playback. The same sound saved twice (a WAV and its MP3, or one file in two
+   packs) shows once, with "also in: …".
+4. **Export.** Tick the sounds (or press S), then **Export…**: choose a folder in
+   your game project, a format (WAV 16/24-bit or OGG) and a sample rate. Each
+   copy is trimmed of silence, normalised to −1 dBTP peak (or, for long files,
+   a loudness target) and named `category_name_01`. MANIFEST.csv records every
+   source, its pack and licence file, and each step. Your originals are never
+   changed. The same from a terminal:
+
+   ~~~bash
+   python skills/audio-designer/scripts/export_sfx.py --root "/path/to/MySounds" --list picks.txt --out "/path/to/Game/Assets/Audio/SFX" --format ogg --rate 48000
+   ~~~
+
+## For sound designers: measures, words and thresholds
+
+`audio_describe.py` measures every file without a model and writes
+AUDIO_DESCRIPTORS.csv: duration with leading and trailing silence trimmed and
+recorded, true peak (dBTP, 4× oversampled), integrated loudness (BS.1770 /
+R128, blank under 400 ms), short-term and momentary maximum (LUFS), crest
+factor, attack (10–90 % of the first onset), decay (peak to −20 dB), spectral
+centroid, 85 % rolloff, flatness, share of energy below 150 Hz, pYIN pitch
+(blank when unvoiced), onset count, a loop-seam test and clipping runs.
+Definitions, library calls and known limits: [docs/descriptors.md](docs/descriptors.md).
+
+Each plain word is one row of `WORDS` in that script, naming its measure:
+`punchy` is attack ≤ 10 ms and crest ≥ 12 dB; `bright` is a centroid in the
+top quarter *of this library* (a percentile, so it adapts to a library of
+foley or of synths); `loud` is a momentary maximum of −14 LUFS or more.
+Edit a threshold there and rerun search or the browser: no pass needs repeating.
+An unmeasured file never passes a filter.
+
 ## How to tag or refresh a library
 
 ~~~bash
 python skills/audio-designer/scripts/audio_tag.py tag --root "/path/to/MySounds"
 python skills/audio-designer/scripts/audio_search.py names --root "/path/to/MySounds"
+python skills/audio-designer/scripts/audio_describe.py describe --root "/path/to/MySounds"
 python skills/audio-designer/tagging/vocab_tags.py build --root "/path/to/MySounds"
+python skills/audio-designer/scripts/sfx_groups.py build --root "/path/to/MySounds"
 ~~~
 
-Those are the same three steps as the tag launcher. --out can select a different
+Those are the same five steps as the tag launcher. --out can select a different
 tags CSV; search/browser expect the default AUDIO_TAGS.csv in the root.
 The pass resumes unchanged files using size and nanosecond modification time.
 Run it again after adding or changing sounds; stop and resume when needed.
@@ -151,6 +208,7 @@ are saved to AUDIO_VERDICTS.json and available to an agent.
 | L / X | Like / reject |
 | M | Similar audio |
 | C | Copy full path |
+| S | Tick / untick for export |
 
 ## How to search by words or examples
 
@@ -235,6 +293,8 @@ Generated indexes stay in the sound-library folder and should not be committed:
 | AUDIO_TAGS_skipped.csv | Last pass's skipped files and reasons |
 | AUDIO_NAMES_clap.npz | Cached name vectors |
 | AUDIO_VOCAB_TAGS.csv | Canonical tags with separate evidence sources |
+| AUDIO_DESCRIPTORS.csv | Measured descriptors per file (no model) |
+| AUDIO_GROUPS.csv | Duplicate sets (kept copy) and variation sets |
 | AUDIO_VERDICTS.json | Your likes, rejects and notes |
 
 Run **python tools/check_all.py before a pull request**. It runs the self-tests
@@ -266,6 +326,9 @@ quality gain and some worse retrieval, while adding processing and storage
 cost; events later than the cap can therefore be missed.
 Full-file duration is still measured for filtering. A fingerprint of an intro
 does not describe a later section.
+
+Descriptors measure samples, not meaning: "punchy" says attack and crest,
+not that a sound suits a punch. Brightness words are relative to your library.
 
 Benchmark numbers are graded by **file names** until humans review the clips.
 That proxy favours name-based methods; it is not listening accuracy.

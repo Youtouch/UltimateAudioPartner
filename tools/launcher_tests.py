@@ -9,6 +9,7 @@ import tempfile
 
 
 REPO = Path(__file__).resolve().parents[1]
+STAGES = ('audio_tag.py', 'audio_search.py', 'audio_describe.py', 'vocab_tags.py', 'sfx_groups.py')  # Tag Library, in order
 
 
 def require(condition, message):
@@ -53,9 +54,9 @@ def shell_checks(bash, root):
         return result, log.read_text(encoding='utf-8').splitlines()
 
     result, calls = run('tag-library.sh', first, library.name)
-    require(result.returncode == 0 and len(calls) == 3, 'shell tag stages failed: ' + result.stderr)
+    require(result.returncode == 0 and len(calls) == 5, 'shell tag stages failed: ' + result.stderr)
     result, calls = run('tag-library.sh', other)
-    require(result.returncode == 0 and len(calls) == 3, 'saved relative library broke from another cwd')
+    require(result.returncode == 0 and len(calls) == 5, 'saved relative library broke from another cwd')
     saved = checkout / 'library.txt'
     saved.write_bytes(saved.read_bytes().replace(b'\n', b'\r\n'))
     result, calls = run('sound-browser.sh', other)
@@ -64,7 +65,7 @@ def shell_checks(bash, root):
         result, calls = run(launcher, first, library.name, status=7)
         require(result.returncode == 7 and len(calls) == 1,
                 f'{launcher} ignored command failure: exit {result.returncode}, {len(calls)} stages')
-    for count, stage in enumerate(('audio_tag.py', 'audio_search.py', 'vocab_tags.py'), 1):
+    for count, stage in enumerate(STAGES, 1):
         result, calls = run('tag-library.sh', first, library.name, status=7, stage=stage)
         require(result.returncode == 7 and len(calls) == count, f'shell did not stop after failed {stage}')
     # Prove the changed-path assertion rejects the original relative-path behavior.
@@ -100,8 +101,8 @@ def windows_checks(root):
             "    out.write(json.dumps(sys.argv, ensure_ascii=False) + '\\n')\n"
             "stage = os.environ.get('UAP_FAIL_STAGE', '')\n"
             "raise SystemExit(int(os.environ.get('UAP_LAUNCH_STATUS', '0')) if not stage or os.path.basename(sys.argv[0]) == stage else 0)\n")
-    for relative in ('scripts/audio_tag.py', 'scripts/audio_search.py', 'tagging/vocab_tags.py',
-                     'scripts/sound_browser.py'):
+    for relative in ('scripts/audio_tag.py', 'scripts/audio_search.py', 'scripts/audio_describe.py', 'tagging/vocab_tags.py',
+                     'scripts/sfx_groups.py', 'scripts/sound_browser.py'):
         target = checkout / 'skills/audio-designer' / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(stub, encoding='utf-8')
@@ -118,14 +119,14 @@ def windows_checks(root):
         return result, [json.loads(line) for line in log.read_text(encoding='utf-8').splitlines()]
 
     result, calls = run('Tag Library.bat', first, library.name)
-    require(result.returncode == 0 and len(calls) == 3, 'batch tag stages failed: ' + result.stderr)
+    require(result.returncode == 0 and len(calls) == 5, 'batch tag stages failed: ' + result.stderr)
     result, calls = run('Tag Library.bat', other)
-    require(result.returncode == 0 and len(calls) == 3, 'saved batch path broke from another cwd')
+    require(result.returncode == 0 and len(calls) == 5, 'saved batch path broke from another cwd')
     for launcher in ('Tag Library.bat', 'Sound Browser.bat'):
         result, calls = run(launcher, first, library.name, status=7)
         require(result.returncode == 7 and len(calls) == 1,
                 f'{launcher} ignored failure: exit {result.returncode}, {len(calls)} stages; {result.stderr}')
-    for count, stage in enumerate(('audio_tag.py', 'audio_search.py', 'vocab_tags.py'), 1):
+    for count, stage in enumerate(STAGES, 1):
         result, calls = run('Tag Library.bat', first, library.name, status=7, stage=stage)
         require(result.returncode == 7 and len(calls) == count, f'batch did not stop after failed {stage}')
     launcher = checkout / 'Tag Library.bat'

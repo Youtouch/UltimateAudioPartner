@@ -81,6 +81,22 @@ audio { width: 100%; height: 36px; }
 .empty { color: var(--muted); padding: 40px 0; text-align: center; }
 .keys { color: var(--muted); font-size: 12px; line-height: 1.7; }
 kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font: 11px ui-monospace, monospace; }
+.chip.word { background: transparent; border: 1px solid var(--accent); color: var(--text); }
+.chip.word.on { background: var(--accent); color: var(--accent-text); }
+.also { color: var(--muted); font-size: 12px; grid-column: 2 / -1; }
+.sel { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+.explain-only { display: none; }
+body.explain .explain-only { display: revert; }
+#examples { display: none; gap: 6px; flex-wrap: wrap; align-items: center; color: var(--muted); font-size: 12px; flex-basis: 100%; }
+body.explain #examples { display: flex; }
+#explainbox { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.5; }
+#explainbox b { color: var(--text); font-weight: 600; }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); max-width: 520px; width: 92vw; }
+dialog::backdrop { background: rgba(0, 0, 0, .35); }
+dialog label { display: block; margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
+dialog .field { width: 100%; }
+dialog .row2 .field { width: auto; flex: 1; }
+.hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
 #toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
   padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.show { opacity: 1; }
@@ -101,7 +117,20 @@ kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px
   <input id="avoid" class="field" type="search" placeholder="Avoid words or labels (optional)" aria-label="Avoid words or labels">
   <button id="approved" class="btn">More like my approved</button>
   <span id="status">Loading…</span>
+  <label class="toggle" title="Plain explanations of every word and number, example searches, and a guide to what to search for"><input type="checkbox" id="explain"> Explain</label>
   <button id="reload" class="btn" title="Re-read the tag files (the tagging pass may still be adding rows)">Reload</button>
+  <div id="examples">
+    <label>I need a sound for… <select id="need" class="field" aria-label="What happens in the game">
+      <option value="">choose what happens in the game</option>
+      <option value="short punchy click">a button press</option>
+      <option value="short bright pickup">picking up an item</option>
+      <option value="punchy impact">a hit</option>
+      <option value="short footsteps">a footstep</option>
+      <option value="deep explosion">an explosion</option>
+      <option value="long loopable ambience">ambience (a background that loops)</option>
+    </select></label>
+    <span>Try:</span><span id="exampleList"></span>
+  </div>
 </header>
 
 <aside>
@@ -120,6 +149,10 @@ kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px
   <label class="toggle"><input type="checkbox" id="tagged"> Tagged files only</label>
   <label class="toggle"><input type="checkbox" id="liked"> Liked only</label>
   <label class="toggle"><input type="checkbox" id="hiderej" checked> Hide rejected</label>
+  <label class="toggle" title="The same sound saved twice (a WAV and its MP3, or one file in two packs) shows once, with the other places listed"><input type="checkbox" id="showdups"> Show duplicate copies</label>
+  <h2 id="wordsh">Sounds that are</h2>
+  <div class="seg-group" id="wordfacets"></div>
+  <p class="hint explain-only">Each word is a measurement, not a guess: hover a word to see the number behind it.</p>
   <h2>Tags in these results</h2>
   <input id="tagq" class="field" type="search" placeholder="Find a tag (bird, whoosh, piano…)" style="width:100%;margin-bottom:8px" aria-label="Find a tag">
   <div id="vtagbox">
@@ -134,7 +167,7 @@ kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px
   </details>
   <h2>Keys</h2>
   <div class="keys"><kbd>↓</kbd><kbd>↑</kbd> next / previous and play · <kbd>Space</kbd> play / pause ·
-    <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>L</kbd> like · <kbd>X</kbd> reject · <kbd>M</kbd> more like this · <kbd>C</kbd> copy path</div>
+    <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>L</kbd> like · <kbd>X</kbd> reject · <kbd>M</kbd> more like this · <kbd>C</kbd> copy path · <kbd>S</kbd> tick for export</div>
 </aside>
 
 <main>
@@ -142,6 +175,8 @@ kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px
     <span id="count"></span>
     <span id="selected"></span>
     <span style="margin-left:auto"></span>
+    <span id="picked" class="sub"></span>
+    <button id="exportbtn" class="btn" disabled title="Trim, normalise, convert and name the ticked sounds into a folder for your game">Export…</button>
     <label>Sort <select id="sort" class="field">
       <option value="name">Name</option><option value="score">Match</option><option value="tag">Tag strength</option>
       <option value="short">Shortest</option><option value="long">Longest</option></select></label>
@@ -157,7 +192,27 @@ kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px
     <input id="note" class="field" placeholder="Note on this sound (saved with like / reject)" aria-label="Note">
     <label class="toggle" title="Play the next row when one ends"><input type="checkbox" id="autonext"> Auto</label>
   </div>
+  <div id="explainbox" class="explain-only"></div>
 </footer>
+<dialog id="exportdlg" aria-labelledby="exporttitle">
+  <form method="dialog" id="exportform">
+    <h2 id="exporttitle" style="margin:0 0 4px;font-size:16px">Export <span id="exportcount"></span> to your game</h2>
+    <p class="hint">Copies only: your library files are never changed. Silence is trimmed (5 ms kept before each sound), then each file is normalised, converted and renamed. A MANIFEST.csv lists every source and step.</p>
+    <label for="exportout">Folder (outside the library)</label>
+    <div class="row2"><input id="exportout" class="field" placeholder="D:\MyGame\Assets\Audio\SFX" required><button type="button" id="choose" class="btn">Choose…</button></div>
+    <label for="exportfmt">Format</label>
+    <div class="row2"><select id="exportfmt" class="field"><option value="wav16">WAV 16-bit</option><option value="wav24">WAV 24-bit</option><option value="ogg">OGG Vorbis</option></select>
+      <select id="exportrate" class="field" aria-label="Sample rate"><option>48000</option><option>44100</option><option>22050</option></select></div>
+    <label for="exportmode">Level</label>
+    <div class="row2"><select id="exportmode" class="field"><option value="peak">Peak at −1 dBTP (best for short effects)</option><option value="lufs">Loudness for files over 3 s</option></select>
+      <input id="exportlufs" class="field" type="number" step="1" value="-18" aria-label="Loudness target in LUFS" title="LUFS target for long files"></div>
+    <p class="hint explain-only">Peak: the loudest point of every file lands at the same safe level. Loudness: long files (ambience, music) match in how loud they feel, at −18 LUFS by default; short ones still use the peak.</p>
+    <label for="exportcat">Category for names (empty: each file's best agreed tag)</label>
+    <input id="exportcat" class="field" placeholder="ui">
+    <p class="hint">Files are named category_name_01, category_name_02…</p>
+    <div class="row2" style="justify-content:flex-end;margin-top:14px"><button value="cancel" class="btn">Cancel</button><button id="exportgo" value="default" class="btn primary">Export</button></div>
+  </form>
+</dialog>
 <div id="toast" role="status"></div>
 
 <script>
@@ -175,7 +230,25 @@ const ICON = {
   copy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V2H2v9h3"/></svg>',
 };
 let D = null, verdicts = {}, filtered = [], shown = 0, current = -1, scores = null, evidence = null, scoreLabel = '';
-const state = { bucket: '', tags: [], vtags: [] };
+const state = { bucket: '', tags: [], vtags: [], words: [] };
+const picked = new Set();  // paths ticked for export
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const explaining = () => document.body.classList.contains('explain');
+const wordsOf = r => (r[10] || []).map(k => D.words[k].word);
+const PCT = new Set(['centroid_pct', 'low_share']);
+function numText(r, m) {
+  const k = D.shown.indexOf(m), v = r[11] ? r[11][k] : null;
+  if (v == null) return '';
+  const [label, unit, dec] = D.numbers[m];
+  if (m === 'loop_ready') return label + (v ? ' matches' : ' does not match');
+  const x = PCT.has(m) ? v * 100 : v;
+  return `${label} ${x.toFixed(dec)}${unit ? (unit.startsWith('%') ? '' : ' ') + unit : ''}`;
+}
+function wordTitle(r, k) {
+  const w = D.words[k], nums = w.measures.map(m => numText(r, m)).filter(Boolean).join(', ');
+  return (nums || w.word) + (explaining() ? '. ' + w.explain : '') + ` [${w.rule}]`;
+}
 const audio = $('#audio');
 
 function toast(text) { const t = $('#toast'); t.textContent = text; t.classList.add('show');
@@ -205,6 +278,11 @@ async function load() {
   $('#buckets').innerHTML = ['', ...buckets].map(b =>
     `<button class="chip" data-b="${esc(b)}" aria-pressed="${b === state.bucket}">${b || 'All'}</button>`).join('');
   $('#status').textContent = `${D.tagged.toLocaleString()} of ${D.total.toLocaleString()} files tagged`;
+  D.words = D.words || []; D.dupMembers = {};
+  D.rows.forEach((r, i) => { if (r[12] && r[12][0]) (D.dupMembers[r[12][0]] ||= []).push(i); });
+  $('#wordsh').hidden = $('#wordfacets').hidden = !D.measured;
+  $('#exampleList').innerHTML = (D.examples || []).map(e => `<button class="chip" data-example="${esc(e)}">${esc(e)}</button>`).join(' ')
+    || '<span>tag and describe your library to see examples from it</span>';
   apply();
 }
 
@@ -233,6 +311,8 @@ function apply() {
       if (!ok) continue;
     }
     if (state.vtags.length && !state.vtags.every(t => nsrc(vmask(r, t)) >= (cands ? 1 : 2))) continue;
+    if (state.words.length) { const w = wordsOf(r); if (!state.words.every(x => w.includes(x))) continue; }
+    if (!$('#showdups').checked && r[12] && r[12][1]) continue;  // a duplicate copy: its kept copy lists it
     if (novoice && ((r[4] ?? 0) >= 0.2 || VOICE.some(n => labelScore(r, n) >= 0.2) || VOICE_TAGS.some(t => nsrc(vmask(r, t)) >= 2))) continue;
     filtered.push(i);
   }
@@ -245,12 +325,38 @@ function apply() {
   else if (sort === 'short') filtered.sort((a, b) => (R[a][3] ?? 1e9) - (R[b][3] ?? 1e9));
   else if (sort === 'long') filtered.sort((a, b) => (R[b][3] ?? 0) - (R[a][3] ?? 0));
   $('#count').textContent = (scores ? `Best ${filtered.length} matches for ${scoreLabel}` : `${filtered.length.toLocaleString()} sounds`);
-  $('#selected').innerHTML = state.vtags.map(t => `<button class="chip" data-unvtag="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
+  $('#selected').innerHTML = state.words.map(t => `<button class="chip" data-unword="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
+    + state.vtags.map(t => `<button class="chip" data-unvtag="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
     + state.tags.map(t => `<button class="chip" data-untag="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
     + (scores ? ` <button class="chip" id="clearscore" title="Clear the match">match ×</button>` : '');
   facets(strength);
   vfacets();
+  wordfacets();
   $('#list').innerHTML = ''; shown = 0; more();
+}
+
+function wordfacets() {
+  if (!D.measured) return;
+  const counts = new Map();
+  for (const i of filtered) for (const k of D.rows[i][10] || []) counts.set(k, (counts.get(k) || 0) + 1);
+  $('#wordfacets').innerHTML = D.words.map((w, k) => counts.get(k) && !state.words.includes(w.word)
+    ? `<button class="chip word" data-word="${esc(w.word)}" title="${esc(w.explain + ' [' + w.rule + ']')}">${esc(w.word)} <small>${counts.get(k)}</small></button>` : '').join('')
+    || '<div class="sub">No measured words here.</div>';
+}
+
+function updatePicked() {
+  $('#picked').textContent = picked.size ? `${picked.size} ticked` : '';
+  $('#exportbtn').disabled = !picked.size;
+}
+
+function explainRow(i) {
+  if (!explaining() || i < 0) { $('#explainbox').innerHTML = ''; return; }
+  const r = D.rows[i];
+  if (!r[11]) { $('#explainbox').textContent = 'Not measured yet: run the Tag Library launcher (it measures after tagging).'; return; }
+  const words = (r[10] || []).map(k => `<b>${esc(D.words[k].word)}</b>: ${esc(D.words[k].explain)}`);
+  const nums = ['sound_s', 'attack_ms', 'decay_ms', 'centroid_pct', 'lufs_momentary_max', 'true_peak_dbtp']
+    .map(m => numText(r, m) && `<b>${esc(numText(r, m))}</b>: ${esc(D.numbers[m][3])}`).filter(Boolean);
+  $('#explainbox').innerHTML = [...words, ...nums].join('<br>');
 }
 
 function facets(strength) {
@@ -283,8 +389,11 @@ function rowHtml(i) {
   const vt = vtagsOf(r).sort((a, b) => nsrc(b[1]) - nsrc(a[1]));
   const agreedTags = vt.filter(([, m]) => nsrc(m) >= 2), candTags = vt.filter(([, m]) => nsrc(m) === 1).slice(0, 5);
   const vchip = ([n, m]) => `<button class="chip${nsrc(m) < 2 ? ' cand' : ''}${state.vtags.includes(n) ? ' on' : ''}" data-vtag="${esc(n)}" title="${nsrc(m) >= 2 ? 'Agreed' : 'Candidate'}: ${srcText(m)}">${esc(n.replace(/_/g, ' '))}</button>`;
-  const tags = vt.length ? [...agreedTags, ...candTags].map(vchip).join('')
-    : labelsOf(r).map(([n, s]) => `<button class="chip${state.tags.includes(n) ? ' on' : ''}" data-tag="${esc(n)}" title="${s.toFixed(2)}">${esc(n)} <small>${s.toFixed(2)}</small></button>`).join('');
+  const wchips = (r[10] || []).map(k => `<button class="chip word${state.words.includes(D.words[k].word) ? ' on' : ''}" data-word="${esc(D.words[k].word)}" title="${esc(wordTitle(r, k))}">${esc(D.words[k].word)}</button>`).join('');
+  const group = r[12], takes = group && group[2] ? `<button class="chip" data-act="varied" title="Pick the most different takes from this set of ${group[3]}, for round-robin playback">${group[3]} takes · pick varied</button>` : '';
+  const others = group && group[0] && !group[1] ? (D.dupMembers[group[0]] || []).filter(j => j !== i).map(j => D.rows[j][0]) : [];
+  const tags = wchips + takes + (vt.length ? [...agreedTags, ...candTags].map(vchip).join('')
+    : labelsOf(r).map(([n, s]) => `<button class="chip${state.tags.includes(n) ? ' on' : ''}" data-tag="${esc(n)}" title="${s.toFixed(2)}">${esc(n)} <small>${s.toFixed(2)}</small></button>`).join(''));
   const strip = r[7].map(([start, ids]) => {
     const top = ids[1] ?? 0, hit = sel.length && sel.some(id => { for (let k = 0; k < ids.length; k += 2) if (ids[k] === id && ids[k + 1] >= strength) return true; return false; });
     const tip = []; for (let k = 0; k < ids.length; k += 2) tip.push(D.labels[ids[k]] + ' ' + ids[k + 1]);
@@ -295,6 +404,7 @@ function rowHtml(i) {
     <div style="min-width:0"><div class="name" title="${esc(r[0])}">${esc(file)}</div><div class="sub">${esc(folder)}</div></div>
     <div class="meta">${evidence && evidence[r[8]] ? `<span class="ev" title="Rank of this file in each source; a dash means that source did not find it">${['audio', 'name', 'label'].map(s => `<b class="${evidence[r[8]][s].rank ? 'on' : ''}">${s} ${evidence[r[8]][s].rank ? '#' + evidence[r[8]][s].rank : '–'}</b>`).join('')}</span>` : ''}${scores && r[8] >= 0 && scores[r[8]] != null ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
       <span class="dur">${fmt(r[3])}</span>
+      <input type="checkbox" class="sel" data-act="select" aria-label="Tick for export" title="Tick for export (S)"${picked.has(r[0]) ? ' checked' : ''}>
       <button class="icon${v === 'like' ? ' on-like' : ''}" data-act="like" aria-label="Like" title="Like (L)">${v === 'like' ? ICON.likeOn : ICON.like}</button>
       <button class="icon${v === 'reject' ? ' on-reject' : ''}" data-act="reject" aria-label="Reject" title="Reject (X)">${ICON.reject}</button>
       <button class="icon" data-act="similar" aria-label="Similar audio" title="Similar audio (M)"${r[8] < 0 ? ' disabled' : ''}>${ICON.similar}</button>
@@ -303,6 +413,7 @@ function rowHtml(i) {
       <button class="icon" data-act="copy" aria-label="Copy path" title="Copy full path (C)">${ICON.copy}</button></div>
     ${tags ? `<div class="tags">${tags}</div>` : r[4] == null ? '<div class="tags sub">Not tagged yet</div>' : ''}
     ${strip ? `<div class="strip">${strip}</div>` : ''}
+    ${others.length ? `<div class="also" title="${esc(others.join('\n'))}">also in: ${esc([...new Set(others.map(p => p.split('/')[0]))].join(', '))} (${others.length} cop${others.length > 1 ? 'ies' : 'y'})</div>` : ''}
   </div>`;
 }
 
@@ -322,6 +433,7 @@ function play(i, at = 0) {
   audio.currentTime = at; audio.play().catch(e => { if (e.name !== 'AbortError') toast('Cannot play this file here: ' + e.message); });
   $('#now').innerHTML = `<div class="name" title="${esc(r[0])}">${esc(r[0].split('/').pop())}</div><div class="sub">${esc(r[1])}</div>`;
   $('#note').value = verdicts[r[0]]?.note || '';
+  explainRow(i);
   if (prev >= 0) redraw(prev); redraw(i);
   document.querySelector(`.item[data-i="${i}"]`)?.scrollIntoView({ block: 'nearest' });
 }
@@ -344,7 +456,9 @@ async function match(url, label) {
   $('#status').textContent = 'Matching… (the first search loads the models and indexes the names: up to a minute, longer while a tagging pass is running)';
   const res = await fetch(url), data = await res.json();
   if (!res.ok) { $('#status').textContent = data.error; return; }
-  scores = data.scores; evidence = data.evidence || null; scoreLabel = label + (data.labels?.length ? ` · labels checked: ${data.labels.slice(0, 3).join(', ')}` : ''); $('#sort').value = 'score';
+  scores = data.scores; evidence = data.evidence || null; scoreLabel = label + (data.labels?.length ? ` · labels checked: ${data.labels.slice(0, 3).join(', ')}` : '')
+    + (data.filters?.length ? ` · ${data.matching} match ${data.filters.join(', ')} (listed first)` : ''); $('#sort').value = 'score';
+  if (data.filters?.length) toast(`“${data.filters.join(', ')}” filter on measured values; “${data.sound || 'any sound'}” is what is searched`);
   if (state.tags.length || $('#q').value) toast('Tag and name filters cleared for the match; kind, pack and length still apply');
   if (url.startsWith('/api/approved') || url.startsWith('/api/like?')) $('#liked').checked = false;
   state.tags = []; $('#q').value = '';
@@ -359,7 +473,11 @@ $('#list').addEventListener('click', e => {
   if (tag) { if (!state.tags.includes(tag.dataset.tag)) state.tags.push(tag.dataset.tag); apply(); return; }
   const vtag = e.target.closest('[data-vtag]');
   if (vtag) { if (!state.vtags.includes(vtag.dataset.vtag)) state.vtags.push(vtag.dataset.vtag); apply(); return; }
+  const word = e.target.closest('[data-word]');
+  if (word) { if (!state.words.includes(word.dataset.word)) state.words.push(word.dataset.word); apply(); return; }
   if (seek) return play(i, +seek.dataset.seek);
+  if (act === 'select') { e.target.checked ? picked.add(D.rows[i][0]) : picked.delete(D.rows[i][0]); return updatePicked(); }
+  if (act === 'varied') return pickVaried(i);
   if (act === 'like' || act === 'reject') return verdict(i, act);
   if (act === 'morelike') return match('/api/like?p=' + encodeURIComponent(D.rows[i][0]) + '&avoid=' + encodeURIComponent($('#avoid').value), 'more like ' + D.rows[i][0].split('/').pop());
   if (act === 'similar') return match('/api/similar?row=' + D.rows[i][8], 'like ' + D.rows[i][0].split('/').pop());
@@ -372,13 +490,49 @@ document.body.addEventListener('click', e => {
   const b = e.target.closest('[data-b]'); if (b) { state.bucket = b.dataset.b; document.querySelectorAll('[data-b]').forEach(x => x.setAttribute('aria-pressed', x === b)); apply(); }
   const u = e.target.closest('[data-untag]'); if (u) { state.tags = state.tags.filter(t => t !== u.dataset.untag); apply(); }
   const uv = e.target.closest('[data-unvtag]'); if (uv) { state.vtags = state.vtags.filter(t => t !== uv.dataset.unvtag); apply(); }
+  const uw = e.target.closest('[data-unword]'); if (uw) { state.words = state.words.filter(t => t !== uw.dataset.unword); apply(); }
+  const fw = e.target.closest('#wordfacets [data-word]'); if (fw) { state.words.push(fw.dataset.word); apply(); }
+  const ex = e.target.closest('[data-example]'); if (ex) { $('#describe').value = ex.dataset.example; find(); }
   const fv = e.target.closest('#vfacets [data-vtag]'); if (fv) { state.vtags.push(fv.dataset.vtag); $('#tagq').value = ''; apply(); }
   const f = e.target.closest('#facets [data-tag]'); if (f) { state.tags.push(f.dataset.tag); $('#tagq').value = ''; apply(); }
   if (e.target.id === 'clearscore') { scores = null; evidence = null; if ($('#sort').value === 'score') $('#sort').value = 'name'; apply(); }
 });
 let timer; const later = () => { clearTimeout(timer); timer = setTimeout(apply, 150); };
 ['#q', '#pack', '#dmin', '#dmax', '#strength'].forEach(s => $(s).addEventListener('input', later));
-['#novoice', '#tagged', '#liked', '#hiderej', '#sort', '#cands'].forEach(s => $(s).addEventListener('change', apply));
+['#novoice', '#tagged', '#liked', '#hiderej', '#sort', '#cands', '#showdups'].forEach(s => $(s).addEventListener('change', apply));
+function setExplain(on) {
+  document.body.classList.toggle('explain', on); $('#explain').checked = on; store.set('explain', on ? '1' : '');
+  if (D) { explainRow(current); if (shown) { $('#list').innerHTML = ''; const n = shown; shown = 0; while (shown < n && shown < filtered.length) more(); } }
+}
+$('#explain').addEventListener('change', e => setExplain(e.target.checked));
+setExplain(store.get('explain') === '1');
+$('#need').addEventListener('change', e => { if (e.target.value) { $('#describe').value = e.target.value; find(); } });
+async function pickVaried(i) {
+  const r = D.rows[i], n = parseInt(prompt(`How many takes for round-robin? (this set has ${r[12][3]})`, String(Math.min(4, r[12][3]))), 10);
+  if (n > 0) match('/api/varied?p=' + encodeURIComponent(r[0]) + '&n=' + n, `${n} most different takes of ${r[0].split('/').pop()}`);
+}
+$('#exportbtn').onclick = () => {
+  $('#exportcount').textContent = `${picked.size} sound${picked.size > 1 ? 's' : ''}`;
+  $('#exportout').value = $('#exportout').value || store.get('exportout') || '';
+  $('#exportdlg').showModal();
+};
+$('#choose').onclick = async () => {
+  const res = await fetch('/api/choose-folder', { method: 'POST', body: '{}' }), data = await res.json();
+  if (!res.ok) return toast(data.error); if (data.folder) $('#exportout').value = data.folder;
+};
+$('#exportform').addEventListener('submit', async e => {
+  if (e.submitter?.value !== 'default') return;
+  e.preventDefault();
+  const body = { paths: [...picked], out: $('#exportout').value, format: $('#exportfmt').value, rate: +$('#exportrate').value,
+    mode: $('#exportmode').value, peak: -1, lufs: +$('#exportlufs').value, category: $('#exportcat').value };
+  $('#exportgo').disabled = true; $('#exportgo').textContent = 'Exporting…';
+  try {
+    const res = await fetch('/api/export', { method: 'POST', body: JSON.stringify(body) }), data = await res.json();
+    if (!res.ok) return toast('Not exported: ' + data.error);
+    store.set('exportout', body.out); $('#exportdlg').close();
+    toast(`Exported ${data.files.length} files to ${data.out} (see MANIFEST.csv)`);
+  } finally { $('#exportgo').disabled = false; $('#exportgo').textContent = 'Export'; }
+});
 $('#tagq').addEventListener('input', () => { facets(+$('#strength').value); vfacets(); });
 const find = () => { const t = $('#describe').value.trim(); if (t) match('/api/search?q=' + encodeURIComponent(t), '“' + t + '”'); };
 $('#go').onclick = find; $('#describe').addEventListener('keydown', e => { if (e.key === 'Enter') find(); });
@@ -407,6 +561,7 @@ document.addEventListener('keydown', e => {
   else if (current >= 0 && (k === 'x' || k === 'X')) verdict(current, 'reject');
   else if (current >= 0 && (k === 'm' || k === 'M') && D.rows[current][8] >= 0) match('/api/similar?row=' + D.rows[current][8], 'like ' + D.rows[current][0].split('/').pop());
   else if (current >= 0 && (k === 'c' || k === 'C')) copy(current);
+  else if (current >= 0 && (k === 's' || k === 'S')) { const p = D.rows[current][0]; picked.has(p) ? picked.delete(p) : picked.add(p); redraw(current); updatePicked(); }
 });
 load().catch(e => { $('#status').textContent = 'Could not load: ' + e.message; });
 </script>

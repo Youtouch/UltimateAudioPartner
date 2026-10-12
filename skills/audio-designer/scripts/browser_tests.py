@@ -137,15 +137,86 @@ def main():
                     status, _ = request("/api/reveal", {"path": paths[0]})
                     check(platform + " reveal selects its native command", status == 200 and launch.call_args.args[0] == command)
 
+            # Measured words, duplicates, variation sets, examples and export, written as describe/groups/vocab passes would.
+            import shutil
+            import soundfile as sf
+            import audio_describe
+            sr = 48000
+            click = np.concatenate([np.zeros(sr // 10), 0.2 * np.sin(2 * np.pi * 900 * np.arange(sr // 5) / sr), np.zeros(sr // 10)])
+            sf.write(root / paths[3], click.astype("float32"), sr)
+            desc = {p: dict.fromkeys(audio_describe.FIELDS, "") | {"relative_path": p, "describer": audio_describe.VERSION}
+                    for p in paths}
+            desc[paths[0]].update(sound_s=0.12, attack_ms=2, crest_db=18, centroid_hz=6000, onsets=1, decay_ms=90, lufs_momentary_max=-20)
+            desc[paths[1]].update(sound_s=4.0, attack_ms=80, crest_db=6, centroid_hz=300, onsets=1, decay_ms=2000, lufs_momentary_max=-35)
+            for k, p in enumerate(paths[2:], 2):
+                desc[p].update(sound_s=1.0, centroid_hz=1000 + k, onsets=2)
+            with (root / "AUDIO_DESCRIPTORS.csv").open("w", newline="", encoding="utf-8") as target:
+                writer = csv.DictWriter(target, audio_describe.FIELDS)
+                writer.writeheader()
+                writer.writerows(desc.values())
+            with (root / "AUDIO_GROUPS.csv").open("w", newline="", encoding="utf-8") as target:
+                target.write("relative_path,duplicate_of,duplicate_set,variation_set,variation_size\n"
+                             f"{paths[0]},,d1,v1,3\n{paths[6]},{paths[0]},d1,,\n{paths[1]},,,v1,3\n{paths[2]},,,v1,3\n")
+            with (root / "AUDIO_VOCAB_TAGS.csv").open("w", newline="", encoding="utf-8") as target:
+                target.write("relative_path,tag,name,label,audio,sources,tagger,built_at\n")
+                for p, tag in [(paths[0], "click"), (paths[1], "click"), (paths[2], "click"), (paths[3], "whoosh"), (paths[4], "whoosh"),
+                               (paths[5], "coin"), (paths[5], "single_event"), (paths[4], "single_event"), (paths[3], "single_event")]:
+                    target.write(f"{p},{tag},1,0.5,0.3,3,ced-base,now\n")
+            status, data = request("/api/data")
+            words = [w["word"] for w in data["words"]]
+            row = {r[0]: r for r in data["rows"]}
+            check("data carries the plain-word table with a sentence and a rule for every word", status == 200
+                  and words[:3] == ["short", "long", "punchy"] and all(w["explain"] and w["rule"] for w in data["words"]))
+            check("a short punchy bright sound earns those words from its measures, with the numbers behind them",
+                  {"short", "punchy", "bright"} <= {words[k] for k in row[paths[0]][10]}
+                  and row[paths[0]][11][data["shown"].index("attack_ms")] == 2)
+            check("a long soft dark sound earns its own words and not the opposite ones",
+                  {"long", "soft", "dark", "tail", "quiet"} <= {words[k] for k in row[paths[1]][10]}
+                  and not {"short", "punchy", "bright"} & {words[k] for k in row[paths[1]][10]})
+            check("every shown number has a plain sentence for Explain mode",
+                  all(v[3] for m, v in data["numbers"].items() if m != "centroid_hz"))
+            check("duplicates and variation sets reach the page", row[paths[6]][12][1] == paths[0] and row[paths[0]][12][2] == "v1")
+            check("three example searches from the commonest agreed sound categories, character tags left out",
+                  len(data["examples"]) == 3 and data["examples"][0].endswith("click") and data["examples"][1].endswith("whoosh")
+                  and not any("single" in e for e in data["examples"]))
+            with patch("sfx_groups.varied", lambda root_, path, n: [paths[2], paths[0]][:n]):
+                status, varied = request("/api/varied?" + urlencode({"p": paths[0], "n": 2}))
+            check("pick varied returns the chosen takes, ranked", status == 200 and varied["picked"] == [paths[2], paths[0]]
+                  and varied["scores"][2] > varied["scores"][0])
+            out = Path(temporary + "-export")
+            try:
+                status, exported = request("/api/export", {"paths": [paths[3]], "out": str(out), "format": "wav24", "rate": 44100,
+                                                           "category": "ui"})
+                check("export writes the selection outside the library, with a manifest", status == 200
+                      and (out / exported["files"][0]).exists() and (out / "MANIFEST.csv").exists()
+                      and sf.info(out / exported["files"][0]).subtype == "PCM_24")
+                status, refused = request("/api/export", {"paths": [paths[3]], "out": str(root / "inside")})
+                check("export into the library is refused", status == 400 and "outside" in refused["error"])
+                status, _ = request("/api/export", {"paths": [], "out": str(out)})
+                check("export with nothing ticked asks for a selection", status == 400)
+            finally:
+                shutil.rmtree(out, ignore_errors=True)
+
             class Hooks(HTMLParser):
                 def __init__(self):
                     super().__init__()
                     self.ids = set()
-                    self.avoid = None
+                    self.avoid = self.explain = self.export = None
+                    self.in_need, self.needs, self.explain_only = False, [], set()
                 def handle_starttag(self, tag, attrs):
                     self.ids.update(value for key, value in attrs if key == "id")
                     if tag == "input" and dict(attrs).get("id") == "avoid":
                         self.avoid = dict(attrs)
+                    if tag == "input" and dict(attrs).get("id") == "explain":
+                        self.explain = dict(attrs)
+                    if tag == "option" and self.in_need:
+                        self.needs.append(dict(attrs).get("value"))
+                    if tag == "select":
+                        self.in_need = dict(attrs).get("id") == "need"
+                    if "explain-only" in (dict(attrs).get("class") or "").split():
+                        self.explain_only.add(dict(attrs).get("id") or tag)
+                    if tag == "button" and dict(attrs).get("id") == "exportbtn":
+                        self.export = dict(attrs)
             status, html = request("/")
             hooks = Hooks()
             hooks.feed(html)
@@ -153,6 +224,17 @@ def main():
                   and {"approved", "avoid"}.issubset(hooks.ids)
                   and hooks.avoid is not None and hooks.avoid.get("value", "") == ""
                   and hooks.avoid.get("type") == "search" and 'data-act="morelike"' in html)
+            check("Explain is one toggle, off by default", hooks.explain is not None and hooks.explain.get("type") == "checkbox"
+                  and "checked" not in hooks.explain)
+            check("'I need a sound for' offers six game events, each filling a search with plain words",
+                  [v for v in hooks.needs if v] == ["short punchy click", "short bright pickup", "punchy impact", "short footsteps",
+                                                     "deep explosion", "long loopable ambience"]
+                  and all(set(v.split()) & set(words) for v in hooks.needs if v))
+            check("beginner help stays hidden unless Explain is on", {"explainbox"} <= hooks.explain_only
+                  and "body.explain #examples { display: flex; }" in html and "#examples { display: none;" in html)
+            check("export, duplicates, word filters and examples have their hooks", hooks.export is not None and "disabled" in hooks.export
+                  and {"exportdlg", "exportout", "choose", "showdups", "wordfacets", "exampleList", "need"} <= hooks.ids
+                  and 'data-act="select"' in html and 'data-act="varied"' in html)
         finally:
             server.shutdown()
             server.server_close()

@@ -9,7 +9,7 @@ You cannot hear. Every claim about a sound rests on one of three kinds of eviden
 
 | Evidence | Source | Proves |
 |---|---|---|
-| **Measured** | `audio_index.py`, `audio_map.py`, FFmpeg meters | Length, loudness, peaks, bands, density, beats. Not what the sound is. |
+| **Measured** | `audio_describe.py` (every file: trimmed length, LUFS, true peak, attack, decay, brightness, pitch, onsets, loop seam, clipping), `audio_index.py`, `audio_map.py`, FFmpeg meters | Length, loudness, peaks, shape, bands, density, beats. Not what the sound is. |
 | **Recognised** | `scripts/audio_tag.py` (AudioSet labels per 10 s, CLAP ranking) | What a model hears in it, with a probability. A reading, not a listen. |
 | **Judged** | The user's ear, recorded in the project profile | Whether it fits. Only this settles taste. |
 
@@ -24,6 +24,8 @@ Read [recognise-and-select.md](references/recognise-and-select.md). In short:
 1. Turn the request into a brief: role, character, prominence, how often it plays, timing, what plays with it, hard constraints.
 2. Shortlist from the library's ledger and indexes by name (cheap), then **recognise** the shortlist with `audio_tag.py tag` and **measure** it with `audio_index.py show`. Drop a file when a label positively contradicts the brief (a calm track tagged `Choir` or `Chant`); when an expected label is merely missing (a "jungle" bed with no bird or frog label), keep it as doubtful and say so. A missing label is not an absence.
 3. For a descriptive brief ("soft playful click") over a tagged library, run `audio_search.py find`: it ranks by three sources separately (the audio fingerprint, the cleaned file name, the AudioSet labels as confirmation only) and merges them, so a file several sources agree on comes first. Read each result's per-source ranks: a file found by the name alone or the audio alone is weaker evidence than one found by both. For loose files, `audio_tag.py rank` compares audio only. Either way a rank orders candidates; it is not taste.
+   Plain words in a query ("short punchy bright click", "loopable rain") are filters on the library's measured descriptors (`AUDIO_DESCRIPTORS.csv`, the WORDS table in `audio_describe.py`), not text for the fingerprint: state a character as one of those words with the measured value behind it ("punchy: attack 3 ms, crest 16 dB").
+   For a sound a game plays repeatedly, offer a variation set's most different takes (`sfx_groups.py varied`), and never offer two copies of one file: `AUDIO_GROUPS.csv` lists duplicates and the copy to keep.
 4. Return at most three candidates as audiocards, with the exact excerpt (start/end), or say **no suitable match**. Never pad a shortlist.
 
 For ambience and animal calls also read [sound-without-hearing.md](references/sound-without-hearing.md); for cutting to music, [music-and-beats.md](references/music-and-beats.md).
@@ -54,7 +56,14 @@ python scripts/audio_tag.py tag --root <library> --only "*animals*" --out tags.c
 python scripts/audio_tag.py rank "gentle wooden click" a.wav b.wav c.wav
 python scripts/audio_search.py find --root <library> "a wooden click" --top 20
 python scripts/audio_tag.py check
+python scripts/audio_describe.py describe --root <library>     # measured descriptors, resumable, no model
+python scripts/audio_describe.py show clip.wav                  # one file's measures and plain words
+python scripts/sfx_groups.py build --root <library>            # duplicate sets and variation sets
+python scripts/sfx_groups.py varied --root <library> --path "Pack/UI/Click_01.wav" --n 4
+python scripts/export_sfx.py --root <library> --list picks.txt --out <game folder> [--format ogg] [--lufs -18]
 ```
+
+**Exporting to a game.** `export_sfx.py` (and the browser's Export) trims silence (5 ms pre-roll), normalises to -1 dBTP, or to a loudness target for files of 3 s or more, converts to WAV 16/24-bit or OGG at a chosen rate, names files `{category}_{name}_{nn}` and writes MANIFEST.csv (source, pack, licence file, steps, descriptors). It refuses an output folder inside the library and never writes to originals.
 
 **A tagged library beats a fresh run.** If the library has a tags CSV (the project profile says where), grep it first: `top_labels` and `timeline` per file, `speech`/`music`/`silence` scores, and `clap_row`, the row of that file's CLAP vector in `<csv>_clap.f32` (512 float32 per row, unit length; a dot product with `embed_text` or another row is the similarity). A changed file appends a row: keep the last row per path. Rerunning the same command tags only new or changed files.
 

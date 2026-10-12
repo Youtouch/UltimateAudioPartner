@@ -171,7 +171,21 @@ def exercise(copy, root, expected, corrupt, env, results):
 
     step('tag + complete ledger + corrupt summary + resume', tag)
     step('names (launcher command)', lambda: command([scripts / 'audio_search.py', 'names', '--root', root], copy, env))
+
+    def describe():
+        start = time.monotonic()
+        command([scripts / 'audio_describe.py', 'describe', '--root', root], copy, env)
+        timings['describe_seconds'] = time.monotonic() - start
+        print(f'INFO describing {len(expected)} readable files: {timings["describe_seconds"]:.2f} s '
+              f'({timings["describe_seconds"] / len(expected):.3f} s/file, startup included)', flush=True)
+        rows = {r['relative_path']: r for r in read_csv(root / 'AUDIO_DESCRIPTORS.csv')}
+        assert set(rows) == set(expected), f'described {len(rows)}, expected {len(expected)}'
+        for path, seconds in expected.items():
+            assert abs(float(rows[path]['duration_s']) - seconds) < .1, rows[path]
+
+    step('describe: measured descriptors for every readable file (launcher command)', describe)
     step('vocab_tags build (launcher command)', lambda: command([skill / 'tagging/vocab_tags.py', 'build', '--root', root], copy, env))
+    step('sfx_groups build (launcher command)', lambda: command([scripts / 'sfx_groups.py', 'build', '--root', root], copy, env))
 
     def find():
         data = json.loads(command([scripts / 'audio_search.py', 'find', '--root', root, 'rain', '--top', '20'], copy, env).stdout)

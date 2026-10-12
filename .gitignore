@@ -14,6 +14,8 @@ AUDIO_VERDICTS.json
 AUDIO_VERDICTS.tmp
 AUDIO_LEDGER*
 AUDIO_NAMES*
+AUDIO_DESCRIPTORS*
+AUDIO_GROUPS*
 *.npz
 # Benchmark data is drawn from your own library: only the bench tools are published
 skills/audio-designer/bench/*
@@ -28,6 +30,8 @@ skills/audio-designer/tagging/*
 !skills/audio-designer/tagging/label_rules.py
 !skills/audio-designer/tagging/label_self_tests.py
 !skills/audio-designer/tagging/label_decisions_v2.json
+!skills/audio-designer/tagging/label_decisions_v3.json
+!skills/audio-designer/tagging/game_vocab.py
 AUDIO_VOCAB*
 AUDIO_TAG_REVIEW*
 AUDIO_AMBIENCE_INDEX*

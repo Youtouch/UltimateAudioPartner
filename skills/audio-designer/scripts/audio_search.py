@@ -11,6 +11,11 @@ Sources, each ranked on its own, then merged by reciprocal rank fusion (no score
           files the other two found: on designed effects (clicks, UI) the tagger is often wrong.
 A file found by several sources outranks one found by a single source. Each result keeps every
 source's own score and rank: the evidence stays separate (parent and child labels are one source).
+
+Plain words ("short punchy bright click") are FILTERS on measured values when the library has
+AUDIO_DESCRIPTORS.csv (audio_describe.py): the sound word ranks, and files whose measures pass every plain word
+(audio_describe.WORDS) come first, marked matches_words; the rest follow, so a word meant differently from its
+measured definition cannot empty a search. A file without measurements never passes a filter.
 """
 
 import argparse
@@ -22,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 from library_metadata import read_metadata, relative_path
+import audio_describe
 
 DIM = 512
 RRF_K = 60
@@ -137,7 +143,22 @@ class Index:
         self.silence = np.array([float(tags[p]['silence'] or 0) for p in self.paths])
         self.label_text = [tags[p]['top_labels'] + ' ' + tags[p].get('timeline', '') for p in self.paths]
         self.seconds = np.array([seconds.get(p, 0.0) for p in self.paths])
+        descriptors = audio_describe.read_descriptors(self.root)
+        self.table = audio_describe.table_for(self.paths, descriptors) if descriptors else None
         self.name_vectors = self._name_vectors()
+
+    def parse(self, query):
+        """(sound text, plain-word filters). Without measurements every word stays in the text, as before."""
+        return audio_describe.split_query(query) if self.table is not None else (query, [])
+
+    def word_keep(self, filters):
+        keep = np.ones(len(self.paths), bool)
+        for word in filters:
+            keep &= audio_describe.word_mask(word, self.table)
+        return keep
+
+    def words(self, i):
+        return audio_describe.words_for(self.table, i) if self.table is not None else []
 
     def _name_vectors(self):
         """Cached per name text, so a growing library only embeds new names."""
@@ -184,30 +205,52 @@ class Index:
         return {'audio': audio, 'name': name, 'label': label}, wanted, {'audio': 1.0, 'name': 1.0, 'label': weight}
 
     def find(self, query, top=50, keep=None):
-        """Fused ranking. `keep` is an optional boolean mask from the caller's filters."""
-        scores, wanted, weights = self.sources(query)
-        fused = np.zeros(len(self.paths))
-        ranks = {}
-        found = np.zeros(len(self.paths), bool)
-        for source, s in scores.items():  # audio and name find; label only confirms what they found
-            s = np.where(keep, s, -np.inf) if keep is not None else s
-            if source == 'label':
-                s = np.where(found & (s > 0), s, -np.inf)
-            order = np.argsort(-s)[:POOL]
-            order = order[np.isfinite(s[order])]
-            r = np.full(len(self.paths), -1)
-            r[order] = np.arange(len(order))
-            ranks[source] = r
-            fused[order] += weights[source] / (RRF_K + np.arange(len(order)))
-            found[order] = True
-        # Mostly-silent files only surface when the query is about silence.
-        if not SILENT_LABELS & set(wanted):
-            fused[self.silence >= 0.5] *= 0.25
-        best = [i for i in np.argsort(-fused)[:top] if fused[i] > 0]
+        """Fused ranking. `keep` is an optional boolean mask from the caller's filters; plain words in the
+        query add their own (see parse)."""
+        text, filters = self.parse(query)
+        match = self.word_keep(filters) if filters else None
+        if not text.strip():  # only plain words: every file that passes, shortest first
+            ok = match & (True if keep is None else keep)
+            order = [i for i in np.argsort(self.seconds, kind='stable') if ok[i]][:top]
+            return [{'path': self.paths[i], 'row': int(self.rows[i]), 'score': 0.0, 'name': self.names[i],
+                     'words': self.words(i), 'matches_words': True, 'evidence': {}} for i in order], {}
+        scores, wanted, weights = self.sources(text)
+
+        def fuse(mask):
+            fused, ranks = np.zeros(len(self.paths)), {}
+            found = np.zeros(len(self.paths), bool)
+            for source, s in scores.items():  # audio and name find; label only confirms what they found
+                s = np.where(mask, s, -np.inf) if mask is not None else s
+                if source == 'label':
+                    s = np.where(found & (s > 0), s, -np.inf)
+                order = np.argsort(-s)[:POOL]
+                order = order[np.isfinite(s[order])]
+                r = np.full(len(self.paths), -1)
+                r[order] = np.arange(len(order))
+                ranks[source] = r
+                fused[order] += weights[source] / (RRF_K + np.arange(len(order)))
+                found[order] = True
+            # Mostly-silent files only surface when the query is about silence.
+            if not SILENT_LABELS & set(wanted):
+                fused[self.silence >= 0.5] *= 0.25
+            return fused, ranks
+
+        fused, ranks = fuse(keep)
+        best = [i for i in np.argsort(-fused) if fused[i] > 0]
+        if match is not None:
+            # Files that pass the plain words come first, ranked among themselves; the rest follow, so a word whose
+            # measured meaning differs from what the writer meant ("soft" timbre, not a slow attack) cannot empty a search.
+            fused_m, ranks_m = fuse(match & (True if keep is None else keep))
+            passing = [i for i in np.argsort(-fused_m) if fused_m[i] > 0]
+            for source in ranks:
+                ranks[source] = np.where(match, ranks_m[source], ranks[source])
+            fused = np.where(match, fused_m, fused)
+            best = passing + [i for i in best if not match[i]]
         return [{'path': self.paths[i], 'row': int(self.rows[i]), 'score': round(float(fused[i]) * 100, 3), 'name': self.names[i],
+                 'words': self.words(i), 'matches_words': None if match is None else bool(match[i]),
                  'evidence': {src: {'rank': int(ranks[src][i]) + 1 if ranks[src][i] >= 0 else None,
                                     'score': round(float(scores[src][i]), 3)} for src in scores}}
-                for i in best], wanted
+                for i in best[:top]], wanted
 
 
 def like_score(approved, rejected):
@@ -266,7 +309,60 @@ def check():
     assert two > one
     # like: closer to the approved wins; a file nearer a rejected example than the approved loses half that lead.
     assert like_score(.7, .5) == .7 and abs(like_score(.6, .9) - .45) < 1e-9 and like_score(.6, .9) < like_score(.5, .4)
-    print('PASS audio_search check: names cleaned, stems, fusion favours agreement')
+    filter_check()
+    print('PASS audio_search check: names cleaned, stems, fusion favours agreement, plain words filter on measures')
+
+
+def filter_check(trials=20):
+    """A real synthetic library, measured by audio_describe: a long dark sound NAMED click and a short bright
+    click with an uninformative name. Fused search alone prefers the named one (as name and audio sources do on
+    such a pair); 'short bright click' must put the short bright click first in every trial."""
+    import tempfile
+    from unittest.mock import patch
+    import soundfile as sf
+    from scipy.signal import butter, sosfilt
+    sr, rng = 48000, np.random.default_rng(3)
+    t = np.arange(int(1.5 * sr)) / sr
+    sounds = {'Pack/click_heavy.wav': sosfilt(butter(4, 300, 'lowpass', fs=sr, output='sos'), rng.standard_normal(len(t)))
+              * np.exp(-t / 0.5) * 2,
+              'Pack/sample_07.wav': np.concatenate([sosfilt(butter(4, 5000, 'highpass', fs=sr, output='sos'),
+                                                            rng.standard_normal(int(0.03 * sr))) * np.hanning(int(0.03 * sr)),
+                                                   np.zeros(int(0.05 * sr))])}
+    fade = np.minimum(1, np.minimum(np.arange(sr), np.arange(sr)[::-1]) / (0.05 * sr))
+    for k in range(6):  # one-second fillers across the spectrum, so 'bright' and 'dark' are percentiles of a real spread
+        sounds[f'Pack/filler_{k}.wav'] = sosfilt(butter(2, [300 + 300 * k, 900 + 600 * k], 'bandpass', fs=sr, output='sos'),
+                                                 rng.standard_normal(sr)) * fade
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        for rel, y in sounds.items():
+            (root / rel).parent.mkdir(exist_ok=True)
+            sf.write(root / rel, (0.5 * y / np.abs(y).max()).astype('float32'), sr)
+        audio_describe.library(root, workers=1)
+        index = Index.__new__(Index)
+        index.root, index.paths = root, sorted(sounds)
+        index.names = [clean_name(p, 'Pack') for p in index.paths]
+        index.rows, index.silence = np.arange(len(index.paths)), np.zeros(len(index.paths))
+        index.seconds = np.array([1.0] * len(index.paths))
+        index.table = audio_describe.table_for(index.paths, audio_describe.read_descriptors(root))
+        heavy, bright = index.paths.index('Pack/click_heavy.wav'), index.paths.index('Pack/sample_07.wav')
+        assert set(audio_describe.words_for(index.table, bright)) >= {'short', 'bright'}, audio_describe.words_for(index.table, bright)
+        assert not {'short', 'bright'} & set(audio_describe.words_for(index.table, heavy))
+        for trial in range(trials):
+            noise = np.random.default_rng(trial).random((3, len(index.paths)))
+            scores = {'audio': noise[0], 'name': noise[1], 'label': np.zeros(len(index.paths))}
+            for s in ('audio', 'name'):
+                scores[s][heavy] = 2.0  # the named click leads both sources
+            with patch.object(Index, 'sources', lambda self, q: (scores, {}, {'audio': 1, 'name': 1, 'label': .5})):
+                plain = index.find('click', top=8)[0]
+                filtered = index.find('short bright click', top=8)[0]
+            assert plain[0]['path'] == 'Pack/click_heavy.wav', 'control: unfiltered fusion prefers the named long one'
+            assert filtered[0]['path'] == 'Pack/sample_07.wav' and filtered[0]['matches_words'], filtered
+            order = [r['path'] for r in filtered]
+            assert order.index('Pack/click_heavy.wav') > order.index('Pack/sample_07.wav'), 'the long dark one follows, unmatched'
+            assert not next(r for r in filtered if r['path'] == 'Pack/click_heavy.wav')['matches_words']
+        index.table = None  # without measurements the same words are ordinary query text again
+        with patch.object(Index, 'sources', lambda self, q: (scores, {}, {'audio': 1, 'name': 1, 'label': .5})):
+            assert index.find('short bright click', top=8)[0][0]['path'] == 'Pack/click_heavy.wav'
 
 
 def main():
@@ -295,7 +391,8 @@ def main():
     if a.cmd == 'like':
         return print(json.dumps(like(index, a.approved, a.rejected, a.avoid, a.min_seconds, a.top), indent=1))
     results, wanted = index.find(a.query, a.top)
-    print(json.dumps({'labels_used': wanted, 'results': results}, indent=1))
+    text, filters = index.parse(a.query)
+    print(json.dumps({'sound': text, 'filters': filters, 'labels_used': wanted, 'results': results}, indent=1))
 
 
 if __name__ == '__main__':

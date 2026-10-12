@@ -44,6 +44,16 @@ The reviewed command currently reports no reviewed rows. It does not silently fa
 
 `bench_select.py build` refuses to overwrite an existing benchmark. For a deliberate new pilot, use `--out` with a new child folder under `bench`, and copy the frozen vocabulary/queries there. Seed defaults to 20261010. Do not regenerate the pilot merely because another tagging batch completes. `bench_clap.py run` uses only an existing local checkpoint, offline, CPU, one text at a time, and two CPU threads by default. It never re-embeds audio or writes to the library. It refuses zero/nonfinite vectors. It writes baseline outputs in this script's folder; preserve them before an intentional rerun.
 
+## Short game sound effects
+
+`short_sfx.py` is a second, PROXY-only benchmark for files under 1.5 s: twelve game queries (footstep on gravel, sword swing, coin pickup, UI button click, gunshot, laser shot, jump, punch impact, glass breaking, explosion, magic spell, notification), each with a file-name regex as truth. `search` ranks every short file in each pack-hashed DEV/TEST split by name only, audio only, labels only and fused, reporting AP and P@10. `labels` asks how the AudioSet tagger hears short sounds under twelve input conditions (silence padding to 1, 2 or 10 s; sound at the start or centred; raw or silence-trimmed): a hit is a query label in the top 5. The condition with the most DEV hits is compared with today's (raw, start, 1 s) by an exact paired McNemar test on TEST; a change is adopted only when TEST favours it at p < 0.05. Some queries have no TEST files after the pack split: read the per-query counts in the JSON before trusting a macro number.
+
+```powershell
+$env:AUDIO_LIBRARY = 'D:\MySounds'
+python .\short_sfx.py search --out short_sfx_search.json
+python .\short_sfx.py labels --per-query 120 --out short_sfx_labels.json
+```
+
 ## Plug in another ranking method
 
 Supply CSV columns `query_id,relative_path,rank` (positive integer rank, unique per query); `score` is optional and ignored for ordering. A full-library ranking is accepted; paths outside a split's known benchmark rows are filtered out. Duplicate paths are collapsed at their first rank. An absent query or short result list is evaluated as incomplete and its coverage is reported.

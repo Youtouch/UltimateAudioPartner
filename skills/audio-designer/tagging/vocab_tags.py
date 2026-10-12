@@ -395,7 +395,7 @@ def build_evidence(library, vocabulary, model=None, top_k=None, label_mode="fitt
         library.meta["label_policy"] = {"version": "legacy-flat", "printed_floor": .1}
     elif label_mode == "fitted":
         from label_rules import decisions_for_rows
-        policy_path = Path(label_model) if label_model else HERE / "label_decisions_v2.json"
+        policy_path = Path(label_model) if label_model else HERE / "label_decisions_v3.json"
         raw_policy = policy_path.read_bytes()
         bundle = json.loads(raw_policy)
         label_support, label_meta = decisions_for_rows(library.rows, vocabulary, bundle)
@@ -414,6 +414,28 @@ def evidence_rows(library, vocabulary, support, labels, scores, built_at):
                "name": int(support[i, j, 0]), "label": float(labels[i, j]) if support[i, j, 1] else "",
                "audio": float(scores[i, j]) if support[i, j, 2] else "",
                "sources": int(support[i, j].sum()), "tagger": tagger_name(library.rows[i]), "built_at": built_at}
+
+
+MATERIALS = ("dirt", "gravel", "snow", "grass", "stone", "metal", "wood", "water", "glass")
+
+
+def material_rows(library, vocabulary, support, labels, scores, built_at, event="footsteps"):
+    """footsteps_on_<material>: the event and the material each supported by at least one source, the sources
+    possibly different ("footstep" in the name, gravel heard by the audio). The row's sources are their union."""
+    index = {v["tag"]: j for j, v in enumerate(vocabulary)}
+    if event not in index:
+        return
+    e = index[event]
+    for material in MATERIALS:
+        if material not in index:
+            continue
+        m = index[material]
+        for i in np.flatnonzero(support[:, e].any(axis=1) & support[:, m].any(axis=1)):
+            either = support[i, e] | support[i, m]
+            pick = lambda source, values: next((float(values[i, j]) for j in (e, m) if support[i, j, source]), "")
+            yield {"relative_path": library.paths[i], "tag": f"{event}_on_{material}", "name": int(either[0]),
+                   "label": pick(1, labels), "audio": pick(2, scores), "sources": int(either.sum()),
+                   "tagger": tagger_name(library.rows[i]), "built_at": built_at}
 
 
 def percentile_ranks(values):
@@ -551,7 +573,8 @@ def main():
     stats = source_statistics(support, tags)
     count = support.sum(axis=2)
     if args.cmd == "build":
-        write_csv(out, evidence_rows(library, vocabulary, support, labels, scores, built_at), TAG_FIELDS)
+        write_csv(out, (*evidence_rows(library, vocabulary, support, labels, scores, built_at),
+                        *material_rows(library, vocabulary, support, labels, scores, built_at)), TAG_FIELDS)
         weak_rows = ({"relative_path": library.paths[i], "tag": tags[j], "weak_label_score": float(weak[i, j]),
                       "mapped_labels": vocabulary[j]["audioset_labels"], "mapping_relation": "approximate",
                       "tagger": tagger_name(library.rows[i])} for i, j in np.argwhere(np.isfinite(weak)))
