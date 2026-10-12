@@ -255,20 +255,36 @@ def integration_check():
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__)
-    sub=p.add_subparsers(dest='cmd',required=True)
-    sub.add_parser('check')
-    e=sub.add_parser('run')
-    e.add_argument('--benchmark',type=Path,default=HERE/'benchmark.csv')
-    e.add_argument('--queries',type=Path,default=HERE/'queries.csv')
-    e.add_argument('--vocabulary',type=Path,default=HERE/'vocabulary.csv')
+    p=argparse.ArgumentParser(
+        description='Score retrieval and label predictions against reviewed or filename proxy truth.',
+        epilog='Example: python bench/bench_eval.py run --rankings rankings.csv --mode reviewed',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub=p.add_subparsers(dest='cmd',required=True, title='commands', help='available commands')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python bench/bench_eval.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
+    e=sub.add_parser(
+        'run',
+        description='Evaluate rankings with explicit reviewed or proxy truth and coverage.',
+        epilog='Example: python bench/bench_eval.py run --rankings rankings.csv --mode reviewed --out results.json',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Evaluate rankings with explicit reviewed or proxy truth and coverage.',
+    )
+    e.add_argument('--benchmark',type=Path,default=HERE/'benchmark.csv', help='review-sheet CSV defining candidates and truth')
+    e.add_argument('--queries',type=Path,default=HERE/'queries.csv', help='frozen query-contract CSV')
+    e.add_argument('--vocabulary',type=Path,default=HERE/'vocabulary.csv', help='canonical-tag vocabulary CSV')
     method=e.add_mutually_exclusive_group(required=True)
-    method.add_argument('--rankings',type=Path)
+    method.add_argument('--rankings',type=Path, help='CSV of query_id, relative_path and positive integer rank')
     method.add_argument('--callable',help='local_file.py:function; function(query_dict,candidate_rows) returns ranked relative paths')
-    e.add_argument('--tag-scores',type=Path)
-    e.add_argument('--threshold',type=float,default=.5)
-    e.add_argument('--mode',choices=['reviewed','proxy'],default='reviewed')
-    e.add_argument('--out',type=Path)
+    e.add_argument('--tag-scores',type=Path, help='optional full-score CSV with relative_path, tag and score')
+    e.add_argument('--threshold',type=float,default=.5, help='label score at or above which a prediction is positive')
+    e.add_argument('--mode',choices=['reviewed','proxy'],default='reviewed', help='reviewed listener truth or explicitly biased filename proxy truth')
+    e.add_argument('--out',type=Path, help='optional JSON report path; metrics also print to stdout')
     a=p.parse_args()
     if a.cmd=='check': check(); return integration_check()
     if not math.isfinite(a.threshold): p.error('threshold must be finite')

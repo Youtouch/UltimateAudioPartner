@@ -504,13 +504,29 @@ def render_mix(cue_path, out, levels=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="command", required=True)
-    render = commands.add_parser("render", help="render a local CSV, then run mix_check")
-    render.add_argument("cue", type=Path)
-    render.add_argument("--out", type=Path, required=True)
+    parser = argparse.ArgumentParser(
+        description='Render a cue sheet to aligned stems and a metered final mix.',
+        epilog='Example: python render/render_mix.py render examples/cue_sheet.csv --out Rendered',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    commands = parser.add_subparsers(dest="command", required=True, title='commands', help='available commands')
+    render = commands.add_parser(
+        'render',
+        help='render a local CSV, then run mix_check',
+        description='Render local cue-sheet audio, then check the aligned stems and final mix.',
+        epilog='Example: python render/render_mix.py render examples/cue_sheet.csv --out Rendered',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    render.add_argument("cue", type=Path, help='cue-sheet CSV of source files, timing and gains')
+    render.add_argument("--out", type=Path, required=True, help='output directory for rendered stems, final.wav and reports')
     render.add_argument("--levels", type=Path, help="calibrated checker thresholds and ducking settings")
-    commands.add_parser("check", help="synthetic integration checks with real renderer mutations")
+    commands.add_parser(
+        'check',
+        help='synthetic integration checks with real renderer mutations',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python render/render_mix.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "check":

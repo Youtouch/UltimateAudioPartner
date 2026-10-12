@@ -142,12 +142,28 @@ def check():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest='cmd', required=True)
-    r = sub.add_parser('run')
-    r.add_argument('--per-family', type=int, default=40)
-    r.add_argument('--models', nargs='+', default=list(MODELS), choices=list(MODELS))
-    sub.add_parser('check')
+    parser = argparse.ArgumentParser(
+        description='Compare AudioSet taggers on the same filename-sampled excerpts.',
+        epilog='Example: python bench/tagger_trial.py run --models ast ced-base',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest='cmd', required=True, title='commands', help='available commands')
+    r = sub.add_parser(
+        'run',
+        description='Compare taggers on identical excerpts from AUDIO_LIBRARY (filename proxy truth).',
+        epilog='Example: python bench/tagger_trial.py run --models ast ced-base',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Compare taggers on identical excerpts from AUDIO_LIBRARY (filename proxy truth).',
+    )
+    r.add_argument('--per-family', type=int, default=40, help='maximum filename-sampled clips per sound family')
+    r.add_argument('--models', nargs='+', default=list(MODELS), choices=list(MODELS), help='tagger models to compare on identical excerpts')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python bench/tagger_trial.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
     a = parser.parse_args()
     if a.cmd == 'check':
         return check()

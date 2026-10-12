@@ -300,17 +300,33 @@ def ledger_fallback_check():
 
 def main():
     global HERE
-    p = argparse.ArgumentParser(description=__doc__)
-    sub = p.add_subparsers(dest='cmd',required=True)
-    sub.add_parser('check')
-    b = sub.add_parser('build')
+    p = argparse.ArgumentParser(
+        description='Build a reproducible review pilot with complete packs kept in one split.',
+        epilog='Example: python bench/bench_select.py build --tags MySounds/AUDIO_TAGS.csv --vectors MySounds/AUDIO_TAGS_clap.f32 --out bench/new-pilot',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = p.add_subparsers(dest='cmd',required=True, title='commands', help='available commands')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python bench/bench_select.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
+    b = sub.add_parser(
+        'build',
+        description='Create a new review pilot; refuse to replace an existing benchmark.',
+        epilog='Example: python bench/bench_select.py build --tags MySounds/AUDIO_TAGS.csv --vectors MySounds/AUDIO_TAGS_clap.f32 --out bench/new-pilot',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Create a new review pilot; refuse to replace an existing benchmark.',
+    )
     b.add_argument('--ledger',type=Path,help='custom ledger; default beside --tags, with tag fallback if missing')
-    b.add_argument('--tags',type=Path,default=ROOT/'AUDIO_TAGS.csv')
-    b.add_argument('--vectors',type=Path,default=ROOT/'AUDIO_TAGS_clap.f32')
-    b.add_argument('--seed',type=int,default=20261010)
-    b.add_argument('--per-stratum',type=int,default=18)
-    b.add_argument('--pack-cap',type=int,default=8)
-    b.add_argument('--out',type=Path,default=HERE)
+    b.add_argument('--tags',type=Path,default=ROOT/'AUDIO_TAGS.csv', help='input AUDIO_TAGS.csv path')
+    b.add_argument('--vectors',type=Path,default=ROOT/'AUDIO_TAGS_clap.f32', help='input CLAP float32 fingerprint file')
+    b.add_argument('--seed',type=int,default=20261010, help='repeatable random sampling seed')
+    b.add_argument('--per-stratum',type=int,default=18, help='target number of clips per review stratum')
+    b.add_argument('--pack-cap',type=int,default=8, help='maximum clips from any one pack')
+    b.add_argument('--out',type=Path,default=HERE, help='new benchmark directory; existing review sheets are refused')
     a = p.parse_args()
     if a.cmd=='check': return check()
     if a.per_stratum < 3 or a.pack_cap < 1: p.error('per-stratum >= 3 and pack-cap >= 1 required')

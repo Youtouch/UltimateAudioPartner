@@ -1,0 +1,40 @@
+{
+  "engine": "Microsoft Edge headless / DevTools Protocol",
+  "synthetic": true,
+  "screenshots": [
+    {
+      "file": "library.png",
+      "url": "http://127.0.0.1:65215",
+      "assertion": "document.querySelectorAll('.item .chip').length > 4"
+    },
+    {
+      "file": "sound-detail.png",
+      "url": "http://127.0.0.1:65215",
+      "assertion": "!$('#inspector').hidden && $('#spectrogram').naturalWidth > 0"
+    },
+    {
+      "file": "explain.png",
+      "url": "http://127.0.0.1:65215",
+      "assertion": "document.body.classList.contains('explain') && $('#explainbox').textContent.includes('attack')"
+    },
+    {
+      "file": "compare.png",
+      "url": "http://127.0.0.1:65215",
+      "assertion": "!$('#comparestrip').hidden && document.querySelectorAll('.comparecard').length === 3"
+    },
+    {
+      "file": "export.png",
+      "url": "http://127.0.0.1:65215",
+      "assertion": "$('#exportdlg').open && $('#exportcount').textContent.includes('3')"
+    }
+  ],
+  "checks": [
+    "real UI loaded",
+    "four cached row envelopes",
+    "spectrogram decoded",
+    "click seeks to half duration",
+    "comparison applies measured gain",
+    "toggle returns to unity",
+    "no JavaScript exceptions"
+  ]
+}

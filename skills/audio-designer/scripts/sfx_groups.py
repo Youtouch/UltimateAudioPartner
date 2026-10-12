@@ -315,17 +315,39 @@ def check():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest='cmd', required=True)
-    b = sub.add_parser('build')
-    b.add_argument('--root', type=Path, required=True)
+    parser = argparse.ArgumentParser(
+        description='Group duplicate recordings and select different takes of a sound.',
+        epilog='Example: python scripts/sfx_groups.py build --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest='cmd', required=True, title='commands', help='available commands')
+    b = sub.add_parser(
+        'build',
+        description='Build duplicate groups and variation sets from a tagged library.',
+        epilog='Example: python scripts/sfx_groups.py build --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Build duplicate groups and variation sets from a tagged library.',
+    )
+    b.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
     b.add_argument('--out', type=Path, help='CSV (default <root>/AUDIO_GROUPS.csv)')
     b.add_argument('--descriptors', type=Path, help='AUDIO_DESCRIPTORS.csv kept elsewhere (default: in the root)')
-    v = sub.add_parser('varied', help='the N most different members of a file\'s variation set')
-    v.add_argument('--root', type=Path, required=True)
-    v.add_argument('--path', required=True)
-    v.add_argument('--n', type=int, default=4)
-    sub.add_parser('check')
+    v = sub.add_parser(
+        'varied',
+        help="the N most different members of a file's variation set",
+        description='Return the most different members of one variation set.',
+        epilog='Example: python scripts/sfx_groups.py varied --root MySounds --path "UI/Click_01.wav" --n 4',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    v.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
+    v.add_argument('--path', required=True, help='relative path of a sound in the wanted variation set')
+    v.add_argument('--n', type=int, default=4, help='number of different takes to select')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python scripts/sfx_groups.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
     a = parser.parse_args()
     if a.cmd == 'check':
         return check()

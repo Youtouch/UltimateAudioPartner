@@ -25,6 +25,7 @@ CHECKS = [
     ('scripts/export_sfx.py', 'check'),
     ('scripts/library_tests.py',),
     ('scripts/browser_tests.py',),
+    ('scripts/visual_tests.py',),
     ('bench/bench_select.py', 'check'),
     ('bench/bench_clap.py', 'check'),
     ('bench/bench_eval.py', 'check'),
@@ -36,11 +37,14 @@ CHECKS = [
     ('mix/calibration_tests.py',),
     ('render/render_mix.py', 'check'),
 ]
-REPO_CHECKS = [('tools/launcher_tests.py',), ('tools/publication_tests.py',)]
+REPO_CHECKS = [('tools/launcher_tests.py',), ('tools/publication_tests.py',), ('tools/ui_tests.py',),
+               ('tools/demo_tests.py',), ('tools/help_tests.py',), ('tools/polish_tests.py',)]
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0],
+                                    epilog='Example: python tools/check_all.py --published',
+                                    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--published', action='store_true', help='test this repository without looking for a live skill')
     parser.add_argument('--from', dest='source', type=Path, help='explicit live skill source')
     args = parser.parse_args()

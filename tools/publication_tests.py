@@ -7,8 +7,10 @@ import io
 from pathlib import Path
 import shutil
 import subprocess
+import struct
 import sys
 import tempfile
+import zlib
 from unittest.mock import patch
 
 import check_all
@@ -72,6 +74,51 @@ def privacy_contract(check=sync.privacy_check):
         write(stage / 'guide.md', 'Public text only.\n')
         with contextlib.redirect_stdout(io.StringIO()):
             assert check(stage, words) == [], 'Clean publication was rejected'
+
+
+def screenshot_copy_contract():
+    with tempfile.TemporaryDirectory(prefix='uap-images-test-') as temporary:
+        root = Path(temporary)
+        source, target = root / 'source', root / 'copy'
+        write(source / 'CHANGELOG.md', 'Public changes.\n')
+        for name in ('library.png', 'sound-detail.png', 'explain.png', 'compare.png', 'export.png', 'private.png'):
+            path = source / 'docs/img' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'\x89PNG\r\n\x1a\n')
+        sync.copy_repo_files(source, target)
+        assert (target / 'CHANGELOG.md').is_file(), 'Changelog omitted from publication'
+        copied = {p.name for p in (target / 'docs/img').glob('*')}
+        assert copied == {'library.png', 'sound-detail.png', 'explain.png', 'compare.png', 'export.png'}, copied
+
+
+def png_privacy_contract():
+    def chunk(kind, body):
+        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body))
+    def png(metadata=b''):
+        return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0))
+                + metadata + chunk(b'IDAT', zlib.compress(b'\0\x17\x37\x5b')) + chunk(b'IEND', b''))
+    with tempfile.TemporaryDirectory(prefix='uap-png-privacy-') as temporary:
+        root = Path(temporary)
+        stage, words = root / 'stage', root / 'words.txt'
+        stage.mkdir()
+        (stage / 'screen.png').write_bytes(png())
+        # A substring of the compressed image is not visible text or metadata.
+        raw = (stage / 'screen.png').read_bytes()
+        binary_fragment = raw[raw.index(b'IDAT') + 4:][:4].decode('latin-1')
+        write(words, binary_fragment + '\n')
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert sync.privacy_check(stage, words) == [], 'Compressed pixels scanned as prose'
+        write(words, 'orchid secret phrase\n')
+        for kind in (b'tEXt', b'zTXt', b'iTXt'):
+            secret = b'ORCHID SECRET PHRASE'
+            body = b'Comment\0' + (b'\0' + zlib.compress(secret) if kind == b'zTXt' else
+                                   b'\1\0\0\0' + zlib.compress(secret) if kind == b'iTXt' else secret)
+            (stage / 'screen.png').write_bytes(png(chunk(kind, body)))
+            with contextlib.redirect_stdout(io.StringIO()):
+                assert sync.privacy_check(stage, words), 'PNG metadata bypassed privacy gate'
+        (stage / 'screen.png').write_text('ORCHID SECRET PHRASE', encoding='utf-8')
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert sync.privacy_check(stage, words), 'Renaming text as PNG bypassed privacy gate'
 
 
 def tree_snapshot(root):
@@ -192,6 +239,8 @@ def main():
     tests = [
         ('renamed-source publication allowlist', public_copy_contract),
         ('case-insensitive privacy blockers and safe diagnostics', privacy_contract),
+        ('only named public screenshots and changelog are copied', screenshot_copy_contract),
+        ('PNG pixels stay binary and text metadata is privacy checked', png_privacy_contract),
         ('existing destination survives privacy failure', lambda: gate_contract('privacy')),
         ('absent destination survives privacy failure', lambda: gate_contract('privacy', False)),
         ('existing destination survives test-runner failure', lambda: gate_contract('tests')),

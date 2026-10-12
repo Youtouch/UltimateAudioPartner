@@ -108,11 +108,27 @@ def run(args):
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__)
-    sub=p.add_subparsers(dest='cmd',required=True); sub.add_parser('check')
-    r=sub.add_parser('run')
-    r.add_argument('--cached-model',type=Path,default=Path.home()/'.cache/huggingface/hub/models--laion--clap-htsat-unfused/snapshots/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a')
-    r.add_argument('--threads',type=int,default=2)
+    p=argparse.ArgumentParser(
+        description='Evaluate a cached CLAP baseline offline on CPU.',
+        epilog='Example: python bench/bench_clap.py run --cached-model CachedCLAP',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub=p.add_subparsers(dest='cmd',required=True, title='commands', help='available commands'); sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python bench/bench_clap.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
+    r=sub.add_parser(
+        'run',
+        description='Write CLAP scores and rankings using an existing local checkpoint.',
+        epilog='Example: python bench/bench_clap.py run --cached-model CachedCLAP',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Write CLAP scores and rankings using an existing local checkpoint.',
+    )
+    r.add_argument('--cached-model',type=Path,default=Path.home()/'.cache/huggingface/hub/models--laion--clap-htsat-unfused/snapshots/8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a', help='complete local cached CLAP checkpoint')
+    r.add_argument('--threads',type=int,default=2, help='number of CPU math threads')
     a=p.parse_args()
     if a.cmd=='check': return check()
     if a.threads<1: p.error('threads must be >= 1')

@@ -229,14 +229,36 @@ def index(root, only=None, out=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest='command', required=True)
-    cmd = commands.add_parser('index')
-    cmd.add_argument('root', type=Path)
+    parser = argparse.ArgumentParser(
+        description='Measure non-music files from a library ledger.',
+        epilog='Example: python scripts/audio_index.py index MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    commands = parser.add_subparsers(dest='command', required=True, title='commands', help='available commands')
+    cmd = commands.add_parser(
+        'index',
+        description='Measure and cache non-music files selected from the ledger.',
+        epilog='Example: python scripts/audio_index.py index MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Measure and cache non-music files selected from the ledger.',
+    )
+    cmd.add_argument('root', type=Path, help='folder containing the audio library')
     cmd.add_argument('--only', help='relative-path glob; bypass ledger classification')
-    cmd.add_argument('--out', type=Path)
-    commands.add_parser('show').add_argument('file', type=Path)
-    commands.add_parser('check')
+    cmd.add_argument('--out', type=Path, help='output index CSV (default: <root>/AUDIO_AMBIENCE_INDEX.csv)')
+    commands.add_parser(
+        'show',
+        description='Measure one audio file and print JSON.',
+        epilog='Example: python scripts/audio_index.py show sound.wav',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Measure one audio file and print JSON.',
+    ).add_argument('file', type=Path, help='audio or video file to measure')
+    commands.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python scripts/audio_index.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
     args = parser.parse_args()
     if args.command == 'check':
         check()

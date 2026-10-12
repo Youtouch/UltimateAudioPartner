@@ -162,6 +162,9 @@ class Index:
 
     def _name_vectors(self):
         """Cached per name text, so a growing library only embeds new names."""
+        from demo_metadata import read_demo
+        if read_demo(self.root):
+            return np.zeros((len(self.names), DIM), '<f4')
         cache = self.root / 'AUDIO_NAMES_clap.npz'
         known = {}
         if cache.exists():
@@ -179,6 +182,9 @@ class Index:
 
     def sources(self, query):
         """Each source's score for every file, kept apart, plus each source's weight for this query."""
+        from demo_metadata import read_demo, name_sources
+        if read_demo(self.root):
+            return name_sources(self, query, words, stem)
         from audio_tag import embed_text, tagger
         main = head(query)
         q = embed_text([query, f'the sound of {query}', main])
@@ -384,22 +390,50 @@ def filter_check(trials=20):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest='cmd', required=True)
-    n = sub.add_parser('names')
-    n.add_argument('--root', type=Path, required=True)
-    f = sub.add_parser('find')
-    f.add_argument('query')
-    f.add_argument('--root', type=Path, required=True)
-    f.add_argument('--top', type=int, default=20)
-    k = sub.add_parser('like', help='sounds like the approved examples, unlike the rejected ones')
-    k.add_argument('--root', type=Path, required=True)
+    parser = argparse.ArgumentParser(
+        description='Search a tagged library by words or approved examples.',
+        epilog='Example: python scripts/audio_search.py find --root MySounds "a wooden click"',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest='cmd', required=True, title='commands', help='available commands')
+    n = sub.add_parser(
+        'names',
+        description='Cache cleaned file-name text vectors for a tagged library.',
+        epilog='Example: python scripts/audio_search.py names --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Cache cleaned file-name text vectors for a tagged library.',
+    )
+    n.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
+    f = sub.add_parser(
+        'find',
+        description='Rank audio, name and label evidence, then prefer measured word matches.',
+        epilog='Example: python scripts/audio_search.py find --root MySounds "short bright click"',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Rank audio, name and label evidence, then prefer measured word matches.',
+    )
+    f.add_argument('query', help='text description of the wanted sound')
+    f.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
+    f.add_argument('--top', type=int, default=20, help='maximum number of results to return')
+    k = sub.add_parser(
+        'like',
+        help='sounds like the approved examples, unlike the rejected ones',
+        description='Rank from approved examples, with optional rejected counter-examples.',
+        epilog='Example: python scripts/audio_search.py like --root MySounds --approved Click_01.wav --rejected Rattle_01.wav',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    k.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
     k.add_argument('--approved', nargs='+', required=True, help='path substrings of approved files')
-    k.add_argument('--rejected', nargs='*', default=[])
+    k.add_argument('--rejected', nargs='*', default=[], help='path substrings of rejected counter-examples')
     k.add_argument('--avoid', help='regex over file paths and labels in every window, e.g. "Choir|Sing|Speech|Organ|Voice|Lyric|Vocal"')
-    k.add_argument('--min-seconds', type=float, default=0)
-    k.add_argument('--top', type=int, default=20)
-    sub.add_parser('check')
+    k.add_argument('--min-seconds', type=float, default=0, help='minimum full-file duration in seconds')
+    k.add_argument('--top', type=int, default=20, help='maximum number of results to return')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python scripts/audio_search.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
     a = parser.parse_args()
     if a.cmd == 'check':
         return check()

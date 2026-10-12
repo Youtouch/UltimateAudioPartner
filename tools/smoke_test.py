@@ -292,12 +292,14 @@ def assert_scores(data):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description='Exercise a fresh public copy with a generated synthetic audio library.',
+        epilog='Example: python tools/smoke_test.py --quick --published',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--quick', action='store_true', help='10 files rather than 40 (one is corrupt)')
     parser.add_argument('--cpu', action='store_true', help='hide GPUs from torch, include wall time per readable file')
     parser.add_argument('--published', action='store_true', help='use only this copy, never an installed skill')
     parser.add_argument('--from', dest='source', type=Path, help='explicit live skill source')
-    parser.add_argument('--report', type=Path)
+    parser.add_argument('--report', type=Path, help='optional JSON test and timing report path')
     parser.add_argument('--keep', action='store_true', help='keep the synthetic workspace for diagnosis')
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]

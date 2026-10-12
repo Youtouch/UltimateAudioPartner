@@ -212,17 +212,21 @@ def check():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('cmd', nargs='?', choices=['check'])
-    parser.add_argument('--root', type=Path)
+    parser = argparse.ArgumentParser(
+        description='Export selected sounds with trimming, level adjustment and a source manifest.',
+        epilog='Example: python scripts/export_sfx.py --root MySounds --list picks.txt --out GameAudio',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument('cmd', nargs='?', choices=['check'], help='optional check command runs synthetic export checks')
+    parser.add_argument('--root', type=Path, help='folder containing the audio library')
     parser.add_argument('--list', type=Path, help='one file per line, relative to --root or absolute')
-    parser.add_argument('--out', type=Path)
-    parser.add_argument('--format', default='wav16', choices=list(FORMATS))
-    parser.add_argument('--rate', type=int, default=48000)
+    parser.add_argument('--out', type=Path, help='required output folder outside the source library')
+    parser.add_argument('--format', default='wav16', choices=list(FORMATS), help='export sample format or OGG Vorbis')
+    parser.add_argument('--rate', type=int, default=48000, help='export sample rate in Hz')
     parser.add_argument('--peak', type=float, default=-1.0, help='true-peak target in dBTP (default -1)')
     parser.add_argument('--lufs', type=float, help='integrated loudness target for files of at least --lufs-min-seconds')
-    parser.add_argument('--lufs-min-seconds', type=float, default=3.0)
-    parser.add_argument('--pattern', default='{category}_{name}_{nn}')
+    parser.add_argument('--lufs-min-seconds', type=float, default=3.0, help='minimum file length for loudness rather than peak normalisation')
+    parser.add_argument('--pattern', default='{category}_{name}_{nn}', help='output name template using {category}, {name}, {nn}, {pack} and {stem}')
     parser.add_argument('--category', help='category for every file (default: its best agreed studio tag, else sfx)')
     a = parser.parse_args()
     if a.cmd == 'check':

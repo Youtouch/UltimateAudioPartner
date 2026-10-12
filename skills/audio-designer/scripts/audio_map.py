@@ -205,11 +205,15 @@ def selftest():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description='Print tempo, beats, loud and quiet sections, and strongest hits as JSON.',
+        epilog='Example: python scripts/audio_map.py track.wav',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     parser.add_argument("file", nargs="?", help="audio or video file")
     parser.add_argument("--sections", type=int, help="number of sections to split into")
     parser.add_argument("--hits", type=int, default=12, help="how many strongest hits to list")
-    parser.add_argument("--selftest", action="store_true")
+    parser.add_argument("--selftest", action="store_true", help='run synthetic checks without a library')
     args = parser.parse_args()
     if args.selftest or args.file == "check":
         return selftest()

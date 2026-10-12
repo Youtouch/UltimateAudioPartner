@@ -155,16 +155,38 @@ def check():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest="cmd", required=True)
-    f = sub.add_parser("fit")
-    f.add_argument("--root", type=Path, required=True)
-    c = sub.add_parser("compare")
-    c.add_argument("--root", type=Path, required=True)
-    c.add_argument("--before", type=Path, required=True)
-    c.add_argument("--after", type=Path, required=True)
-    c.add_argument("--out", type=Path)
-    sub.add_parser("check")
+    parser = argparse.ArgumentParser(
+        description='Fit new vocabulary rules on DEV and compare agreement by sound length.',
+        epilog='Example: python tagging/game_vocab.py compare --root MySounds --before old.csv --after new.csv',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True, title='commands', help='available commands')
+    f = sub.add_parser(
+        'fit',
+        description='Fit only new-tag decisions on DEV packs; preserve existing frozen rules.',
+        epilog='Example: python tagging/game_vocab.py fit --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Fit only new-tag decisions on DEV packs; preserve existing frozen rules.',
+    )
+    f.add_argument("--root", type=Path, required=True, help='folder containing the audio library')
+    c = sub.add_parser(
+        'compare',
+        description='Compare canonical-tag agreement by length bucket on DEV and TEST.',
+        epilog='Example: python tagging/game_vocab.py compare --root MySounds --before old.csv --after new.csv --out comparison.json',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Compare canonical-tag agreement by length bucket on DEV and TEST.',
+    )
+    c.add_argument("--root", type=Path, required=True, help='folder containing the audio library')
+    c.add_argument("--before", type=Path, required=True, help='canonical-tag CSV from before the rule change')
+    c.add_argument("--after", type=Path, required=True, help='canonical-tag CSV from after the rule change')
+    c.add_argument("--out", type=Path, help='optional JSON comparison report path')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python tagging/game_vocab.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
     a = parser.parse_args()
     if a.cmd == "check":
         return check()

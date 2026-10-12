@@ -534,20 +534,36 @@ def review_candidates(library, vocabulary, support, scores, labels, rules, top=1
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("check", help="assert-based synthetic tests; no model or library needed")
+    parser = argparse.ArgumentParser(
+        description='Combine name, model labels and audio evidence into canonical tags.',
+        epilog='Example: python tagging/vocab_tags.py build --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True, title='commands', help='available commands')
+    sub.add_parser(
+        'check',
+        help='assert-based synthetic tests; no model or library needed',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python tagging/vocab_tags.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     for command in ("build", "disagreements", "stats"):
-        p = sub.add_parser(command)
-        p.add_argument("--root", type=Path, default=os.environ.get("AUDIO_LIBRARY"))
-        p.add_argument("--out", type=Path)
+        p = sub.add_parser(
+            command,
+            description=f'{command.capitalize()} canonical tags with separate name, label and audio evidence.',
+            epilog=f'Example: python tagging/vocab_tags.py {command} --root MySounds',
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            help=f'{command.capitalize()} canonical tags with separate name, label and audio evidence.',
+        )
+        p.add_argument("--root", type=Path, default=os.environ.get("AUDIO_LIBRARY"), help='folder containing the audio library')
+        p.add_argument("--out", type=Path, help='output CSV (default: AUDIO_VOCAB_TAGS.csv, AUDIO_TAG_REVIEW.csv or AUDIO_VOCAB_STATS.csv in --root)')
         p.add_argument("--cached-model", type=Path, help="complete local cached CLAP checkpoint")
-        p.add_argument("--audio-top-k", type=int, default=None)
+        p.add_argument("--audio-top-k", type=int, default=None, help='override the number of audio-supported tags per file')
         p.add_argument("--label-rule", choices=("fitted", "flat"), default="fitted",
                        help="DEV-fitted per-tag policy (default) or legacy printed >=0.1 control")
         p.add_argument("--label-model", type=Path, help="frozen policy JSON; default beside this script")
         if command == "disagreements":
-            p.add_argument("--top", type=int, default=150)
+            p.add_argument("--top", type=int, default=150, help='maximum number of results to return')
             p.add_argument("--also-flat-review", action="store_true",
                            help="write a flat-rule control review from the identical loaded snapshot")
     args = parser.parse_args()

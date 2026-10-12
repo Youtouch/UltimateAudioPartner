@@ -403,25 +403,59 @@ def reembed_check():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest='cmd', required=True)
-    t = sub.add_parser('tag')
-    t.add_argument('files', nargs='*', type=Path)
-    t.add_argument('--root', type=Path)
+    parser = argparse.ArgumentParser(
+        description='Recognise audio events and rank files against a description.',
+        epilog='Example: python scripts/audio_tag.py tag --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest='cmd', required=True, title='commands', help='available commands')
+    t = sub.add_parser(
+        'tag',
+        description='Label audio files and cache fingerprints; library passes resume unchanged files.',
+        epilog='Example: python scripts/audio_tag.py tag --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Label audio files and cache fingerprints; library passes resume unchanged files.',
+    )
+    t.add_argument('files', nargs='*', type=Path, help='audio files to analyse')
+    t.add_argument('--root', type=Path, help='folder containing the audio library')
     t.add_argument('--only', help='relative-path glob under --root')
     t.add_argument('--out', type=Path, help='CSV for a resumable library pass (needs --root)')
-    t.add_argument('--seconds', type=float, default=60)
-    r = sub.add_parser('rank')
-    r.add_argument('query')
-    r.add_argument('files', nargs='+', type=Path)
-    r.add_argument('--seconds', type=float, default=10)
-    rl = sub.add_parser('relabel', help='relabel an existing tags CSV with the current tagger, keeping fingerprints')
-    rl.add_argument('--root', type=Path, required=True)
+    t.add_argument('--seconds', type=float, default=60, help='maximum opening audio span to analyse, in seconds')
+    r = sub.add_parser(
+        'rank',
+        description='Rank supplied files by audio similarity to a text description.',
+        epilog='Example: python scripts/audio_tag.py rank "soft wooden click" click.wav knock.wav',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Rank supplied files by audio similarity to a text description.',
+    )
+    r.add_argument('query', help='text description of the wanted sound')
+    r.add_argument('files', nargs='+', type=Path, help='audio files to analyse')
+    r.add_argument('--seconds', type=float, default=10, help='maximum opening audio span to analyse, in seconds')
+    rl = sub.add_parser(
+        'relabel',
+        help='relabel an existing tags CSV with the current tagger, keeping fingerprints',
+        description='Replace labels in an existing tags CSV, preserving its fingerprints.',
+        epilog='Example: python scripts/audio_tag.py relabel --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    rl.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
     rl.add_argument('--tags', type=Path, help='tags CSV (default <root>/AUDIO_TAGS.csv)')
-    e = sub.add_parser('reembed', help='re-fingerprint short files with silence padding, in place')
-    e.add_argument('--root', type=Path, required=True)
+    e = sub.add_parser(
+        'reembed',
+        help='re-fingerprint short files with silence padding, in place',
+        description='Replace short-file fingerprints using silence padding.',
+        epilog='Example: python scripts/audio_tag.py reembed --root MySounds',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    e.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
     e.add_argument('--tags', type=Path, help='tags CSV (default <root>/AUDIO_TAGS.csv)')
-    sub.add_parser('check')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python scripts/audio_tag.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
     a = parser.parse_args()
     if a.cmd == 'relabel':
         return relabel(a.root, a.tags or a.root / 'AUDIO_TAGS.csv')

@@ -30,6 +30,8 @@ import numpy as np
 
 from library_metadata import read_metadata
 import audio_describe
+import audio_visuals
+import demo_metadata
 
 HERE = Path(__file__).resolve().parent
 SHOWN = list(audio_describe.NUMBERS)  # the measures each row carries, in this order
@@ -52,6 +54,7 @@ class Library:
         self.vectors = root / 'AUDIO_TAGS_clap.f32'
         self.verdicts_path = root / 'AUDIO_VERDICTS.json'
         self.lock = threading.Lock()
+        self.visual_lock = threading.RLock()
 
     def payload(self):
         """Ledger rows joined with the latest tag row per path. Untagged files are listed too."""
@@ -117,7 +120,14 @@ class Library:
                          if group else None])
         words = [{'word': w[0], 'aliases': list(w[1]), 'explain': w[3], 'measures': [m for m, _, _ in w[2]],
                   'rule': ' and '.join(f'{m} {op} {v:g}' for m, op, v in w[2])} for w in audio_describe.WORDS]
+        waveforms = {}
+        for rel in paths:
+            try:
+                waveforms[rel] = self.waveform(rel)
+            except (ValueError, OSError, subprocess.SubprocessError):
+                pass  # corrupt/missing audio remains visible with its other evidence
         return {'labels': names, 'vocab': vocab, 'rows': rows, 'verdicts': self.verdicts(), 'root': str(self.root),
+                'waveforms': waveforms, 'demo': demo_metadata.read_demo(self.root),
                 'tagged': len(tagged), 'total': len(rows), 'words': words, 'measured': len(descriptors),
                 'numbers': {m: list(audio_describe.NUMBERS[m]) + [audio_describe.MEASURE_EXPLAIN.get(m, '')] for m in SHOWN},
                 'shown': SHOWN, 'examples': self.examples(rows, vocab, words)}
@@ -217,6 +227,33 @@ class Library:
         picked = sfx_groups.varied(self.root, path, n)
         return self.ranked_payload([{'path': p, 'score': float(len(picked) - k)} for k, p in enumerate(picked)]) | {'picked': picked}
 
+    def waveform(self, rel):
+        with self.visual_lock:
+            return audio_visuals.waveform(self.root, self.file(rel))
+
+    def spectrogram(self, rel):
+        with self.visual_lock:
+            return audio_visuals.spectrogram(self.root, self.file(rel))
+
+    def compare(self, paths):
+        if not isinstance(paths, list) or not 2 <= len(paths) <= 4 or any(not isinstance(p, str) for p in paths):
+            raise ValueError('Select two to four different sounds to compare')
+        if len(set(paths)) != len(paths):
+            raise ValueError('Select two to four different sounds to compare')
+        # Resolve every source before preparing any caches.
+        for path in paths:
+            self.file(path)
+        waves = [self.waveform(path) for path in paths]
+        target, gains = audio_visuals.match_gains(waves)
+        descriptors = audio_describe.read_descriptors(self.root)
+        table = audio_describe.table_for(paths, descriptors)
+        items = []
+        for n, (path, wave, gain) in enumerate(zip(paths, waves, gains)):
+            numbers = {m: None if not np.isfinite(table[m][n]) else round(float(table[m][n]), 4) for m in SHOWN}
+            items.append({'path': path, 'waveform': wave, 'numbers': numbers,
+                          'match_lufs': wave['match_lufs'], 'match_basis': wave['match_basis'], **gain})
+        return {'items': items, 'target_lufs': round(target, 6), 'matched': True}
+
     def export(self, body):
         import export_sfx
         paths = body.get('paths') or []
@@ -294,6 +331,15 @@ def handler(lib):
                     self.send_json(lib.varied(q['p'], int(q.get('n', 4))))
                 elif url.path == '/api/similar':
                     self.send_json(lib.similar(int(q['row'])))
+                elif url.path == '/api/waveform':
+                    self.send_json(lib.waveform(q['p']))
+                elif url.path == '/api/spectrogram':
+                    body = lib.spectrogram(q['p']).read_bytes()
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/png')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                 elif url.path == '/audio':
                     self.send_audio(lib.file(q['p']))
                 else:
@@ -315,6 +361,8 @@ def handler(lib):
                     self.send_json(lib.set_verdict(body['path'], body.get('verdict', ''), body.get('note', '')))
                 elif self.path == '/api/export':
                     self.send_json(lib.export(body))
+                elif self.path == '/api/compare':
+                    self.send_json(lib.compare(body.get('paths')))
                 elif self.path == '/api/choose-folder':
                     self.send_json({'folder': choose_folder()})
                 elif self.path == '/api/reveal':
@@ -388,10 +436,12 @@ class Server(ThreadingHTTPServer):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description='Browse, audition, compare and export a tagged sound library locally.',
+                                     epilog='Example: python scripts/sound_browser.py --root D:/MySounds --port 8790',
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--root', type=Path, required=True, help='library folder holding AUDIO_TAGS.csv')
-    parser.add_argument('--port', type=int, default=8790)
-    parser.add_argument('--no-open', action='store_true')
+    parser.add_argument('--port', type=int, default=8790, help='first localhost port to try (default: 8790; tries 20 ports)')
+    parser.add_argument('--no-open', action='store_true', help='serve without opening a browser window')
     a = parser.parse_args()
     lib = Library(a.root)
     for port in range(a.port, a.port + 20):  # another local tool may hold the port

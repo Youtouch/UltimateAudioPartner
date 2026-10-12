@@ -46,6 +46,10 @@ Per sound: file, excerpt, role, the three kinds of evidence (labels with probabi
 
 `python scripts/sound_browser.py --root <library>` opens a local page where the user browses the library by tag, kind, pack and length, searches by description, finds "more like this", and auditions with the arrow keys. Their likes, rejects and notes land in `AUDIO_VERDICTS.json` in the library root: **read it as judged evidence** before proposing a sound, and never re-propose a rejected file. The browser’s **More like my approved** view ranks from saved likes and rejects; its optional Avoid field starts empty. Each file also has **More like this** alongside audio-only similarity. To hand the user a shortlist, give paths they can paste into the name filter.
 
+Each readable row shows a cached whole-file peak envelope; click it to seek. Opening a sound shows its spectrogram and measured numbers. The descriptor pass precomputes envelopes in `AUDIO_VISUALS/`; source size, nanosecond modification time and cache version invalidate changes. Spectrograms are cached on first open. Up/down moves and plays, Space pauses, A approves, R rejects and S finds more like the current sound; Explain shows these shortcuts.
+
+Tick two to four sounds and choose **Compare 2–4** for side-by-side waveforms and numbers. Playback matches maximum three-second K-weighted loudness at a shared peak-safe target; files under three seconds use an explicitly labelled event-loudness fallback. Matching can be toggled. These are audition gains, never edits to originals, and equal measured loudness is not a judgement about fit.
+
 ## Tools
 
 Run from this skill folder. `audio_map.py` holds the shared loader and FFmpeg lookup (`FFMPEG`, the WinGet Gyan bundle, or PATH); other skills (such as a video export checker) may import it from here, so keep this folder's name.

@@ -14,6 +14,7 @@ import csv
 import fnmatch
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -235,18 +236,20 @@ def integrated(cum, sr):
     return float(_lufs(kept.mean()))
 
 
-def true_peak(y):
+def true_peak(y, start=0, end=None):
     """4x oversampled peak (BS.1770 Annex 2 style), in dBTP. Inter-sample peaks exceed the sample peak by a few dB
-    at most, so only the 4096-sample blocks holding samples within 6 dB of it are oversampled."""
+    at most, so only the 4096-sample blocks holding samples within 6 dB of it are oversampled.
+    Optional [start, end) bounds meter a region while retaining surrounding filter context for streaming."""
     from scipy.signal import resample_poly
-    level = np.abs(y).max(axis=1)
+    end = len(y) if end is None else end
+    level = np.abs(y[start:end]).max(axis=1)
     peak = float(level.max()) if len(level) else 0.0
     if peak <= 0:
         return -np.inf
-    for block in np.unique(np.flatnonzero(level >= 0.5 * peak) // 4096):
-        start, end = block * 4096, min(len(y), (block + 1) * 4096)
-        lo, hi = min(64, start), min(64, len(y) - end)  # context samples, dropped after filtering (edge ringing)
-        up = resample_poly(y[start - lo:end + hi], 4, 1, axis=0)
+    for block in np.unique((np.flatnonzero(level >= 0.5 * peak) + start) // 4096):
+        first, last = max(start, block * 4096), min(end, (block + 1) * 4096)
+        lo, hi = min(64, first), min(64, len(y) - last)  # context samples, dropped after filtering (edge ringing)
+        up = resample_poly(y[first - lo:last + hi], 4, 1, axis=0)
         peak = max(peak, float(np.abs(up[4 * lo:len(up) - 4 * hi]).max()))
     return _db(peak)
 
@@ -473,6 +476,14 @@ def library(root, only=None, out=None, workers=4):
         if not (old and old['size_bytes'] == str(stat.st_size) and old['mtime_ns'] == str(stat.st_mtime_ns)
                 and old.get('describer') == VERSION):
             todo.append((p, rel, stat.st_size, stat.st_mtime_ns))
+    # Visuals have their own version and stamp: an older descriptor pass may have no envelope yet.
+    # Cache them beside this CSV, including files whose numerical descriptors are already current.
+    import audio_visuals
+    for p in files:
+        try:
+            audio_visuals.waveform(root, p)
+        except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            print(f'VISUAL SKIP {p.relative_to(root)}: {exc}', file=sys.stderr, flush=True)
     print(f'{len(files)} files, {len(todo)} to describe', file=sys.stderr, flush=True)
     workers = max(1, min(workers, len(todo) // 25 + 1))  # starting a worker costs ~2 s of imports: few files, few workers
     if workers > 1:  # one math thread per worker: N workers x all-core BLAS/FFT threads oversubscribe the CPU
@@ -631,16 +642,24 @@ def check():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest='cmd', required=True)
-    d = sub.add_parser('describe', help='measure every audio file under --root (resumable)')
-    d.add_argument('--root', type=Path, required=True)
+    parser = argparse.ArgumentParser(description='Measure sound duration, loudness, envelopes, spectrum and pitch without models.',
+                                     epilog='Example: python scripts/audio_describe.py describe --root D:/MySounds',
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest='cmd', required=True, title='commands', help='available commands')
+    d = sub.add_parser('describe', help='measure every audio file under --root (resumable)',
+                       description='Measure audio files and cache browser waveforms, resuming unchanged files.',
+                       epilog='Example: python scripts/audio_describe.py describe --root D:/MySounds --workers 4')
+    d.add_argument('--root', type=Path, required=True, help='audio library folder')
     d.add_argument('--only', help='relative-path glob under --root')
     d.add_argument('--out', type=Path, help='CSV (default <root>/AUDIO_DESCRIPTORS.csv)')
-    d.add_argument('--workers', type=int, default=max(1, min(8, (os.cpu_count() or 2) - 2)))
-    s = sub.add_parser('show')
-    s.add_argument('files', nargs='+', type=Path)
-    sub.add_parser('check')
+    d.add_argument('--workers', type=int, default=max(1, min(8, (os.cpu_count() or 2) - 2)), help='maximum measurement workers (default: up to 8)')
+    s = sub.add_parser('show', help='print one file\'s measures and plain words as JSON',
+                       description='Measure individual audio files and print JSON.',
+                       epilog='Example: python scripts/audio_describe.py show click.wav')
+    s.add_argument('files', nargs='+', type=Path, help='audio files to measure')
+    sub.add_parser('check', help='check measures on synthetic signals with known answers',
+                   description='Verify descriptors on generated audio with known answers.',
+                   epilog='Example: python scripts/audio_describe.py check')
     a = parser.parse_args()
     if a.cmd == 'check':
         return check()

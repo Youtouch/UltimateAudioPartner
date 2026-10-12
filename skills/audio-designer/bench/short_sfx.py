@@ -220,14 +220,36 @@ def check():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest='cmd', required=True)
-    s = sub.add_parser('search')
-    s.add_argument('--out', type=Path, default=HERE / 'short_sfx_search.json')
-    lab = sub.add_parser('labels')
-    lab.add_argument('--per-query', type=int, default=120)
-    lab.add_argument('--out', type=Path, default=HERE / 'short_sfx_labels.json')
-    sub.add_parser('check')
+    parser = argparse.ArgumentParser(
+        description='Benchmark short-effect search and test label input conditions.',
+        epilog='Example: python bench/short_sfx.py search --out short-search.json',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest='cmd', required=True, title='commands', help='available commands')
+    s = sub.add_parser(
+        'search',
+        description='Score short-effect retrieval on separate DEV and TEST packs from AUDIO_LIBRARY.',
+        epilog='Example: python bench/short_sfx.py search --out short-search.json',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Score short-effect retrieval on separate DEV and TEST packs from AUDIO_LIBRARY.',
+    )
+    s.add_argument('--out', type=Path, default=HERE / 'short_sfx_search.json', help='output JSON report path')
+    lab = sub.add_parser(
+        'labels',
+        description='Choose label input conditions on DEV and compare paired hits on TEST.',
+        epilog='Example: python bench/short_sfx.py labels --per-query 120 --out short-labels.json',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Choose label input conditions on DEV and compare paired hits on TEST.',
+    )
+    lab.add_argument('--per-query', type=int, default=120, help='maximum filename-matched short clips per query')
+    lab.add_argument('--out', type=Path, default=HERE / 'short_sfx_labels.json', help='output JSON report path')
+    sub.add_parser(
+        'check',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python bench/short_sfx.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help='Run synthetic checks without a library or model download.',
+    )
     a = parser.parse_args()
     if a.cmd == 'check':
         return check()

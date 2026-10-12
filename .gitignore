@@ -16,6 +16,8 @@ AUDIO_LEDGER*
 AUDIO_NAMES*
 AUDIO_DESCRIPTORS*
 AUDIO_GROUPS*
+AUDIO_VISUALS*/
+UAP_DEMO.json
 *.npz
 # Benchmark data is drawn from your own library: only the bench tools are published
 skills/audio-designer/bench/*

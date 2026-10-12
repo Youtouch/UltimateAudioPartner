@@ -106,11 +106,54 @@ dialog .row2 .field { width: auto; flex: 1; }
   footer { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+
+/* Visual browsing: cached envelopes and a focused detail panel. */
+header h1 { min-width:150px; font-size:18px; letter-spacing:-.04em; }
+header h1 small { display:block; font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:500; }
+body { grid-template-columns:260px 1fr; }
+.workspace { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; align-items:start; }
+.workspace.has-file { grid-template-columns:minmax(0,1fr) 300px; }
+.results { min-width:0; }
+.item { grid-template-columns:36px minmax(100px,1fr) 150px; padding:12px; gap:7px 10px; }
+.play { grid-row:1 / 4; }
+.meta { grid-column:2 / -1; justify-content:flex-start; flex-wrap:wrap; gap:4px; }
+.meta .dur { margin-right:auto; text-align:left; }
+.item .wave { grid-column:3; grid-row:1; }
+.wave { position:relative; display:block; height:42px; width:100%; color:var(--accent); background:var(--accent-soft); border-radius:5px; overflow:hidden; cursor:crosshair; }
+.wave svg { display:block; width:100%; height:100%; }
+.wavehead { position:absolute; top:0; bottom:0; left:0; width:2px; background:var(--text); pointer-events:none; }
+.wave.unavailable { display:grid; place-items:center; font-size:11px; color:var(--muted); cursor:default; background:var(--chip); }
+#inspector { position:sticky; top:60px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; min-width:0; }
+#inspector h2 { font-size:16px; margin:6px 0; overflow-wrap:anywhere; }
+.eyebrow { text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-size:10px; font-weight:650; }
+#detailwave .wave { height:72px; margin-top:15px; }
+#spectrogram { display:block; width:100%; height:148px; object-fit:fill; border-radius:5px; background:#152a2b; margin-top:8px; }
+.axis { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:4px; }
+#detailnumbers { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:14px 0 0; }
+.measure { border-top:1px solid var(--line); padding-top:8px; }
+.measure span { display:block; color:var(--muted); font-size:10px; }
+.measure b { font-variant-numeric:tabular-nums; font-weight:550; font-size:14px; }
+#comparestrip { border:1px solid var(--accent); background:var(--panel); border-radius:12px; padding:14px; margin:0 0 16px; }
+.comparebar { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+.comparebar h2 { margin:0 auto 0 0; font-size:15px; }
+#comparecards { display:grid; grid-template-columns:repeat(var(--comparisons,2),minmax(0,1fr)); gap:12px; }
+.comparecard { min-width:0; background:var(--bg); padding:10px; border-radius:8px; }
+.comparecard .name { margin:6px 0; font-size:12px; }
+.comparecard .wave { height:56px; margin-bottom:8px; }
+.comparecard .btn { width:100%; margin-top:8px; }
+.comparecard .measure { padding-top:5px; margin-top:5px; }
+.comparecard .measure b { font-size:12px; }
+#comparestatus { font-size:11px; color:var(--muted); margin:10px 0 0; }
+#demobanner { flex-basis:100%; border-top:1px solid var(--line); padding-top:7px; color:var(--muted); font-size:12px; }
+[hidden] { display:none !important; }
+@media(max-width:1100px) { .workspace.has-file { grid-template-columns:minmax(0,1fr); } #inspector { position:static; grid-row:1; } #spectrogram { height:120px; } }
+@media(max-width:800px) { body { grid-template-columns:1fr; } #comparecards { grid-template-columns:1fr 1fr; } .item { grid-template-columns:36px minmax(60px,1fr) 100px; } }
+
 </style>
 </head>
 <body>
 <header>
-  <h1>Sound Browser</h1>
+  <h1>UAP <small>Sound library</small></h1>
   <input id="q" class="field" type="search" placeholder="Filter by name or folder" aria-label="Filter by name or folder">
   <input id="describe" class="field" type="search" placeholder="Describe a sound: soft wooden click, birds at dawn, calm piano…" aria-label="Describe a sound">
   <button id="go" class="btn primary">Find</button>
@@ -119,6 +162,7 @@ dialog .row2 .field { width: auto; flex: 1; }
   <span id="status">Loading…</span>
   <label class="toggle" title="Plain explanations of every word and number, example searches, and a guide to what to search for"><input type="checkbox" id="explain"> Explain</label>
   <button id="reload" class="btn" title="Re-read the tag files (the tagging pass may still be adding rows)">Reload</button>
+  <div id="demobanner" hidden>Synthetic demo · tags describe the generator; demo search uses names and generator metadata. Your own library uses the recognition models.</div>
   <div id="examples">
     <label>I need a sound for… <select id="need" class="field" aria-label="What happens in the game">
       <option value="">choose what happens in the game</option>
@@ -129,6 +173,7 @@ dialog .row2 .field { width: auto; flex: 1; }
       <option value="deep explosion">an explosion</option>
       <option value="long loopable ambience">ambience (a background that loops)</option>
     </select></label>
+    <div class="keys" id="shortcutguide"><kbd>↑</kbd><kbd>↓</kbd> move & play · <kbd>Space</kbd> play / pause · <kbd>A</kbd> approve · <kbd>R</kbd> reject · <kbd>S</kbd> more like this · click a waveform to seek</div>
     <span>Try:</span><span id="exampleList"></span>
   </div>
 </header>
@@ -166,8 +211,8 @@ dialog .row2 .field { width: auto; flex: 1; }
     <div id="facets"></div>
   </details>
   <h2>Keys</h2>
-  <div class="keys"><kbd>↓</kbd><kbd>↑</kbd> next / previous and play · <kbd>Space</kbd> play / pause ·
-    <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>L</kbd> like · <kbd>X</kbd> reject · <kbd>M</kbd> more like this · <kbd>C</kbd> copy path · <kbd>S</kbd> tick for export</div>
+  <div class="keys" ><kbd>↓</kbd><kbd>↑</kbd> next / previous and play · <kbd>Space</kbd> play / pause ·
+    <kbd>←</kbd><kbd>→</kbd> 5 s · <kbd>A</kbd> approve · <kbd>R</kbd> reject · <kbd>S</kbd> more like this · <kbd>C</kbd> copy path · tick the checkbox to compare / export</div>
 </aside>
 
 <main>
@@ -176,13 +221,27 @@ dialog .row2 .field { width: auto; flex: 1; }
     <span id="selected"></span>
     <span style="margin-left:auto"></span>
     <span id="picked" class="sub"></span>
+    <button id="comparebtn" class="btn" disabled title="Tick two to four sounds, then compare their measures and loudness-matched playback">Compare 2–4</button>
     <button id="exportbtn" class="btn" disabled title="Trim, normalise, convert and name the ticked sounds into a folder for your game">Export…</button>
     <label>Sort <select id="sort" class="field">
       <option value="name">Name</option><option value="score">Match</option><option value="tag">Tag strength</option>
       <option value="short">Shortest</option><option value="long">Longest</option></select></label>
   </div>
-  <div class="list" id="list"></div>
-  <div id="more"></div>
+  <section id="comparestrip" hidden aria-label="Compare sounds">
+    <div class="comparebar"><h2>Compare sounds</h2><label class="toggle"><input id="matchloudness" type="checkbox" checked> Match loudness</label><button id="closecompare" class="btn" aria-label="Close comparison">Close</button></div>
+    <div id="comparecards"></div><p id="comparestatus"></p>
+  </section>
+  <div class="workspace"><div class="results"><div class="list" id="list"></div><div id="more"></div></div>
+    <section id="inspector" hidden aria-label="Open sound">
+      <div class="eyebrow">Sound detail <button id="closedetail" class="icon" style="float:right;width:22px;height:22px" aria-label="Close sound detail">×</button></div>
+      <h2 id="detailname"></h2><div class="sub" id="detailfolder"></div>
+      <div id="detailwave"></div><div class="axis"><span>0 s</span><span id="detailduration"></span></div>
+      <div class="eyebrow" style="margin-top:18px">Spectrogram · frequency over time</div>
+      <img id="spectrogram" alt="Spectrogram of the open sound: frequency against time, brighter pixels mean more energy">
+      <div class="axis"><span>Low → high frequency ↑</span><span>time →</span></div>
+      <div id="detailnumbers"></div><p class="hint explain-only">Shape and frequency show the samples. They cannot tell you whether this sound fits; audition it.</p>
+    </section>
+  </div>
 </main>
 
 <footer>
@@ -231,7 +290,8 @@ const ICON = {
 };
 let D = null, verdicts = {}, filtered = [], shown = 0, current = -1, scores = null, evidence = null, scoreLabel = '';
 const state = { bucket: '', tags: [], vtags: [], words: [] };
-const picked = new Set();  // paths ticked for export
+const picked = new Set();  // paths ticked for comparison or export
+let comparison = null, context = null, gainNode = null, playbackRequest = 0;
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const explaining = () => document.body.classList.contains('explain');
@@ -264,9 +324,125 @@ const vmask = (r, name) => { const id = D.vocabIndex[name], v = r[9] || []; for 
 const VOICE_TAGS = ['speech', 'whisper', 'sung_voice', 'choir', 'chant', 'humming'];
 const labelScore = (r, name) => { const id = D.labelIndex[name]; for (let i = 0; i < r[6].length; i += 2) if (r[6][i] === id) return r[6][i + 1]; return 0; };
 
+
+// POLISH HELPERS START
+function versionedUrl(endpoint, path) {
+  const w = D.waveforms?.[path];
+  const stamp = w?.source_stamp || [w?.version || '', w?.size_bytes || '', w?.mtime_ns || ''].join(':');
+  return endpoint + encodeURIComponent(path) + '&v=' + encodeURIComponent(stamp);
+}
+async function refreshWaveform(i, request) {
+  const path = D.rows[i][0];
+  try {
+    const res = await fetch('/api/waveform?p=' + encodeURIComponent(path), {cache:'no-store'});
+    const wave = await res.json();
+    if (!res.ok) throw new Error(wave.error || 'Preview unavailable');
+    if (request !== playbackRequest || current !== i || D.rows[i]?.[0] !== path) return false;
+    const compared = comparison?.items.find(x => x.path === path);
+    if (compared && compared.waveform?.source_stamp !== wave.source_stamp) { clearComparison(); toast('Sound changed; compare again to refresh matched levels'); }
+    D.waveforms[path] = wave;
+  } catch(e) {
+    if (request !== playbackRequest || current !== i || D.rows[i]?.[0] !== path) return false;
+    D.waveforms[path] = {source_stamp:'unavailable:' + Date.now()};
+    toast('Preview unavailable: ' + e.message);
+  }
+  return true;
+}
+function clearComparison() {
+  comparison = null; $('#comparestrip').hidden = true; setPlaybackGain();
+}
+function evidenceHtml(row) {
+  return Object.entries(evidence?.[row] || {}).map(([source, value]) => `<b class="${value.rank ? 'on' : ''}">${esc(source)} ${value.rank ? '#' + value.rank : '–'}</b>`).join('');
+}
+function waveSvg(path) {
+  const w = D.waveforms?.[path];
+  if (!w?.peaks?.length) return '<div class="wave unavailable">Preview unavailable</div>';
+  const lines = w.peaks.map((p, k) => { const x = (k + .5) * 256 / w.peaks.length, y = Math.max(.6, p * 22); return `M${x.toFixed(2)},${(24-y).toFixed(2)}v${(2*y).toFixed(2)}`; }).join('');
+  return `<div class="wave" data-wave-path="${esc(path)}" role="slider" tabindex="0" aria-label="Seek ${esc(path.split('/').pop())}" aria-valuemin="0" aria-valuemax="${w.duration_s}" aria-valuenow="0"><svg viewBox="0 0 256 48" preserveAspectRatio="none" aria-hidden="true"><path d="${lines}" stroke="currentColor" stroke-width="1.2"/></svg><i class="wavehead" hidden></i></div>`;
+}
+function seekWave(wave, clientX) {
+  const path = wave.dataset.wavePath, i = D.rows.findIndex(r => r[0] === path);
+  if (i < 0) return;
+  const rect = wave.getBoundingClientRect(), fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const duration = D.waveforms?.[path]?.duration_s || D.rows[i][3] || 0;
+  if (current === i) { audio.currentTime = fraction * duration; updatePlayheads(); }
+  else play(i, fraction * duration);
+}
+function gainForPlayback(path) {
+  return $('#matchloudness').checked ? (comparison?.items.find(x => x.path === path)?.gain ?? 1) : 1;
+}
+function updatePlayheads() {
+  if (current < 0) return;
+  document.querySelectorAll('[data-wave-path]').forEach(w => {
+    const active = w.dataset.wavePath === D.rows[current][0], head = w.querySelector('.wavehead');
+    if (!head) return;
+    head.hidden = !active;
+    if (active) {
+      const duration = audio.duration || D.waveforms?.[w.dataset.wavePath]?.duration_s || 1;
+      head.style.left = Math.min(100, audio.currentTime / duration * 100) + '%';
+      w.setAttribute('aria-valuenow', audio.currentTime.toFixed(2));
+    }
+  });
+}
+// POLISH HELPERS END
+function setPlaybackGain() {
+  if (gainNode) gainNode.gain.setValueAtTime(gainForPlayback(audio.dataset.p), context.currentTime);
+}
+async function preparePlayback() {
+  if (!context) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) { if (comparison && $('#matchloudness').checked) throw new Error('Loudness matching needs Web Audio in this browser'); return; }
+    context = new AudioContext();
+    const source = context.createMediaElementSource(audio);
+    gainNode = context.createGain(); source.connect(gainNode); gainNode.connect(context.destination);
+  }
+  if (context.state === 'suspended') await context.resume();
+  setPlaybackGain();
+}
+function openDetail(i) {
+  const r = D.rows[i]; $('#inspector').hidden = false; $('.workspace').classList.add('has-file');
+  $('#detailname').textContent = r[0].split('/').pop(); $('#detailfolder').textContent = r[1];
+  $('#detailwave').innerHTML = waveSvg(r[0]); $('#detailduration').textContent = fmt(D.waveforms?.[r[0]]?.duration_s || r[3]);
+  $('#spectrogram').src = versionedUrl('/api/spectrogram?p=', r[0]);
+  $('#detailnumbers').innerHTML = ['attack_ms','decay_ms','lufs_momentary_max','true_peak_dbtp','pitch_hz','centroid_hz','crest_db']
+    .map(m => numText(r,m) && `<div class="measure"><span>${esc(D.numbers[m][0])}</span><b>${esc(numText(r,m).replace(D.numbers[m][0], '').trim())}</b></div>`).filter(Boolean).join('');
+}
+async function comparePicked() {
+  if (picked.size < 2 || picked.size > 4) return toast('Tick two to four sounds to compare');
+  const res = await fetch('/api/compare', {method:'POST', body:JSON.stringify({paths:[...picked]})});
+  const data = await res.json(); if (!res.ok) return toast(data.error);
+  comparison = data; $('#comparestrip').hidden = false;
+  $('#comparecards').style.setProperty('--comparisons', data.items.length);
+  $('#comparecards').innerHTML = data.items.map((x,k) => {
+    D.waveforms[x.path] = x.waveform;
+    return `<div class="comparecard"><div class="eyebrow">${String.fromCharCode(65+k)} · ${esc(x.match_basis)}</div><div class="name" title="${esc(x.path)}">${esc(x.path.split('/').pop())}</div>${waveSvg(x.path)}
+      ${['sound_s','attack_ms','centroid_hz','true_peak_dbtp'].map(m => x.numbers[m] != null && D.numbers[m] ? `<div class="measure"><span>${esc(D.numbers[m][0])}</span><b>${Number(x.numbers[m]).toFixed(D.numbers[m][2])} ${esc(D.numbers[m][1])}</b></div>` : '').filter(Boolean).join('')}
+      <div class="measure"><span>Loudness / match gain</span><b>${x.match_lufs == null ? 'Unavailable' : x.match_lufs.toFixed(1)+' LUFS'} · ${x.gain_db.toFixed(1)} dB</b></div>
+      <button class="btn" data-compare-play="${esc(x.path)}">Play ${String.fromCharCode(65+k)}</button></div>`;
+  }).join('');
+  $('#comparestatus').textContent = `Common target ${data.target_lufs == null ? 'unavailable' : data.target_lufs.toFixed(1)+' LUFS'}. Short sounds use K-weighted event loudness when a 3 s short-term window is unavailable. Gains include peak headroom; originals are unchanged.`;
+  setPlaybackGain(); $('#comparestrip').scrollIntoView({block:'nearest'});
+}
+$('#comparebtn').onclick = comparePicked;
+$('#closecompare').onclick = clearComparison;
+$('#matchloudness').onchange = setPlaybackGain;
+$('#closedetail').onclick = () => { $('#inspector').hidden = true; $('.workspace').classList.remove('has-file'); };
+document.addEventListener('click', e => {
+  const wave = e.target.closest('[data-wave-path]'); if (wave) { e.stopPropagation(); seekWave(wave,e.clientX); return; }
+  const button = e.target.closest('[data-compare-play]');
+  if (button) { const i = D.rows.findIndex(r => r[0] === button.dataset.comparePlay); if (i >= 0) play(i); }
+}, true);
+
 async function load() {
+  const previousPath = current >= 0 && D ? D.rows[current]?.[0] : null;
+  const at = audio.currentTime || 0, wasPlaying = !audio.paused, detailWasOpen = !$('#inspector').hidden;
+  ++playbackRequest;  // a pending open must not write into the newly loaded rows
   $('#status').textContent = 'Loading…';
-  const res = await fetch('/api/data'); D = await res.json();
+  const res = await fetch('/api/data', {cache:'no-store'}); D = await res.json();
+  current = previousPath ? D.rows.findIndex(r => r[0] === previousPath) : -1;
+  clearComparison();
+  D.waveforms = D.waveforms || {};
+  $('#demobanner').hidden = !D.demo;
   D.labelIndex = Object.fromEntries(D.labels.map((n, i) => [n, i]));
   D.vocab = D.vocab || []; D.vocabIndex = Object.fromEntries(D.vocab.map((n, i) => [n, i]));
   $('#vtagbox').hidden = !D.vocab.length;
@@ -281,9 +457,19 @@ async function load() {
   D.words = D.words || []; D.dupMembers = {};
   D.rows.forEach((r, i) => { if (r[12] && r[12][0]) (D.dupMembers[r[12][0]] ||= []).push(i); });
   $('#wordsh').hidden = $('#wordfacets').hidden = !D.measured;
-  $('#exampleList').innerHTML = (D.examples || []).map(e => `<button class="chip" data-example="${esc(e)}">${esc(e)}</button>`).join(' ')
+  const examples = D.examples?.length ? D.examples : D.demo ? ['short bright click', 'punchy laser', 'deep footsteps'] : [];
+  $('#exampleList').innerHTML = examples.map(e => `<button class="chip" data-example="${esc(e)}">${esc(e)}</button>`).join(' ')
     || '<span>tag and describe your library to see examples from it</span>';
   apply();
+  if (current >= 0) {
+    await play(current, at, wasPlaying);
+    if (!detailWasOpen) { $('#inspector').hidden = true; $('.workspace').classList.remove('has-file'); }
+  } else if (previousPath) {
+    audio.pause(); audio.removeAttribute('src'); audio.load(); audio.dataset.p = ''; audio.dataset.source = '';
+    $('#inspector').hidden = true; $('.workspace').classList.remove('has-file');
+    $('#now').innerHTML = '<div class="name">Nothing playing</div><div class="sub">Click a row or press ↓</div>';
+    $('#note').value = ''; explainRow(-1);
+  }
 }
 
 function apply() {
@@ -347,6 +533,7 @@ function wordfacets() {
 function updatePicked() {
   $('#picked').textContent = picked.size ? `${picked.size} ticked` : '';
   $('#exportbtn').disabled = !picked.size;
+  $('#comparebtn').disabled = picked.size < 2 || picked.size > 4;
 }
 
 function explainRow(i) {
@@ -402,13 +589,14 @@ function rowHtml(i) {
   return `<div class="item ${v}${i === current ? ' current' : ''}" data-i="${i}">
     <button class="play" data-act="play" aria-label="Play ${esc(file)}">${i === current && !audio.paused ? ICON.pause : ICON.play}</button>
     <div style="min-width:0"><div class="name" title="${esc(r[0])}">${esc(file)}</div><div class="sub">${esc(folder)}</div></div>
-    <div class="meta">${evidence && evidence[r[8]] ? `<span class="ev" title="Rank of this file in each source; a dash means that source did not find it">${['audio', 'name', 'label'].map(s => `<b class="${evidence[r[8]][s].rank ? 'on' : ''}">${s} ${evidence[r[8]][s].rank ? '#' + evidence[r[8]][s].rank : '–'}</b>`).join('')}</span>` : ''}${scores && r[8] >= 0 && scores[r[8]] != null ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
+    ${waveSvg(r[0])}
+    <div class="meta">${evidence && evidence[r[8]] ? `<span class="ev" title="Rank of this file in each source; a dash means that source did not find it">${evidenceHtml(r[8])}</span>` : ''}${scores && r[8] >= 0 && scores[r[8]] != null ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
       <span class="dur">${fmt(r[3])}</span>
-      <input type="checkbox" class="sel" data-act="select" aria-label="Tick for export" title="Tick for export (S)"${picked.has(r[0]) ? ' checked' : ''}>
-      <button class="icon${v === 'like' ? ' on-like' : ''}" data-act="like" aria-label="Like" title="Like (L)">${v === 'like' ? ICON.likeOn : ICON.like}</button>
-      <button class="icon${v === 'reject' ? ' on-reject' : ''}" data-act="reject" aria-label="Reject" title="Reject (X)">${ICON.reject}</button>
+      <input type="checkbox" class="sel" data-act="select" aria-label="Tick for comparison or export" title="Tick for comparison or export"${picked.has(r[0]) ? ' checked' : ''}>
+      <button class="icon${v === 'like' ? ' on-like' : ''}" data-act="like" aria-label="Like" title="Approve (A)">${v === 'like' ? ICON.likeOn : ICON.like}</button>
+      <button class="icon${v === 'reject' ? ' on-reject' : ''}" data-act="reject" aria-label="Reject" title="Reject (R)">${ICON.reject}</button>
       <button class="icon" data-act="similar" aria-label="Similar audio" title="Similar audio (M)"${r[8] < 0 ? ' disabled' : ''}>${ICON.similar}</button>
-      <button class="btn" data-act="morelike" aria-label="More like this using my verdicts" title="Find related sounds, using rejected sounds and Avoid"${r[8] < 0 ? ' disabled' : ''}>More like this</button>
+      <button class="btn" data-act="morelike" aria-label="More like this using my verdicts" title="More like this (S), using rejected sounds and Avoid"${r[8] < 0 ? ' disabled' : ''}>More like this</button>
       <button class="icon" data-act="reveal" aria-label="Show in folder" title="Show in folder">${ICON.folder}</button>
       <button class="icon" data-act="copy" aria-label="Copy path" title="Copy full path (C)">${ICON.copy}</button></div>
     ${tags ? `<div class="tags">${tags}</div>` : r[4] == null ? '<div class="tags sub">Not tagged yet</div>' : ''}
@@ -427,10 +615,17 @@ new IntersectionObserver(e => { if (e[0].isIntersecting && D && shown < filtered
 
 function redraw(i) { const el = document.querySelector(`.item[data-i="${i}"]`); if (el) el.outerHTML = rowHtml(i); }
 
-function play(i, at = 0) {
-  const prev = current; current = i; const r = D.rows[i];
-  if (audio.dataset.p !== r[0]) { audio.src = '/audio?p=' + encodeURIComponent(r[0]); audio.dataset.p = r[0]; }
-  audio.currentTime = at; audio.play().catch(e => { if (e.name !== 'AbortError') toast('Cannot play this file here: ' + e.message); });
+async function play(i, at = 0, autoplay = true) {
+  const prev = current; audio.pause(); current = i; const request = ++playbackRequest;
+  if (!await refreshWaveform(i, request)) return;
+  const r = D.rows[i], source = versionedUrl('/audio?p=', r[0]);
+  if (audio.dataset.source !== source) {
+    audio.src = source; audio.dataset.p = r[0]; audio.dataset.source = source;
+  }
+  audio.currentTime = Math.max(0, Math.min(at, D.waveforms[r[0]]?.duration_s || at)); openDetail(i);
+  try { if (autoplay) await preparePlayback(); else setPlaybackGain(); } catch(e) { toast(e.message); return; }
+  if (request !== playbackRequest || current !== i) return;
+  if (autoplay) audio.play().catch(e => { if (e.name !== 'AbortError') toast('Cannot play this file here: ' + e.message); });
   $('#now').innerHTML = `<div class="name" title="${esc(r[0])}">${esc(r[0].split('/').pop())}</div><div class="sub">${esc(r[1])}</div>`;
   $('#note').value = verdicts[r[0]]?.note || '';
   explainRow(i);
@@ -483,7 +678,7 @@ $('#list').addEventListener('click', e => {
   if (act === 'similar') return match('/api/similar?row=' + D.rows[i][8], 'like ' + D.rows[i][0].split('/').pop());
   if (act === 'reveal') return fetch('/api/reveal', { method: 'POST', body: JSON.stringify({ path: D.rows[i][0] }) });
   if (act === 'copy') return copy(i);
-  if (act === 'play' && i === current) return audio.paused ? audio.play() : audio.pause();
+  if (act === 'play' && i === current) return audio.paused ? play(i, audio.currentTime) : audio.pause();
   play(i);
 });
 document.body.addEventListener('click', e => {
@@ -540,10 +735,11 @@ $('#reload').onclick = load;
 $('#note').addEventListener('change', () => { if (current >= 0 && verdicts[D.rows[current][0]]) {
   const r = D.rows[current]; fetch('/api/verdict', { method: 'POST', body: JSON.stringify({ path: r[0], verdict: verdicts[r[0]].verdict, note: $('#note').value }) })
     .then(res => res.json()).then(v => { verdicts = v; toast('Note saved'); }); } else if (current >= 0) toast('Like or reject the sound to keep its note'); });
-audio.addEventListener('play', () => current >= 0 && redraw(current));
+audio.addEventListener('play', () => { if (current >= 0) redraw(current); const animate = () => { updatePlayheads(); if (!audio.paused) requestAnimationFrame(animate); }; requestAnimationFrame(animate); });
 audio.addEventListener('pause', () => current >= 0 && redraw(current));
 audio.addEventListener('ended', () => { if ($('#autonext').checked) step(1); });
 audio.addEventListener('timeupdate', () => {
+  updatePlayheads();
   const strip = document.querySelector(`.item[data-i="${current}"] .strip`); if (!strip || !audio.duration) return;
   const span = D.rows[current][7].length * 10, x = Math.min(1, audio.currentTime / Math.min(span, audio.duration));
   let head = strip.querySelector('.head'); if (!head) { head = document.createElement('i'); head.className = 'head'; strip.append(head); }
@@ -551,17 +747,18 @@ audio.addEventListener('timeupdate', () => {
 });
 document.addEventListener('keydown', e => {
   if (e.target.matches?.('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
-  const k = e.key;
-  if (k === 'ArrowDown' || k === 'j') { e.preventDefault(); step(1); }
-  else if (k === 'ArrowUp' || k === 'k') { e.preventDefault(); step(-1); }
-  else if (k === ' ') { e.preventDefault(); if (current < 0) step(1); else audio.paused ? audio.play() : audio.pause(); }
-  else if (k === 'ArrowRight') audio.currentTime += 5;
-  else if (k === 'ArrowLeft') audio.currentTime = Math.max(0, audio.currentTime - 5);
-  else if (current >= 0 && (k === 'l' || k === 'L')) verdict(current, 'like');
-  else if (current >= 0 && (k === 'x' || k === 'X')) verdict(current, 'reject');
+  if (document.querySelector('dialog[open]')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'arrowdown' || k === 'j') { e.preventDefault(); step(1); }
+  else if (k === 'arrowup' || k === 'k') { e.preventDefault(); step(-1); }
+  else if (k === ' ') { e.preventDefault(); if (current < 0) step(1); else audio.paused ? play(current, audio.currentTime) : audio.pause(); }
+  else if (k === 'arrowright') audio.currentTime += 5;
+  else if (k === 'arrowleft') audio.currentTime = Math.max(0, audio.currentTime - 5);
+  else if (current >= 0 && (k === 'a' || k === 'l')) verdict(current, 'like');
+  else if (current >= 0 && (k === 'r' || k === 'x')) verdict(current, 'reject');
   else if (current >= 0 && (k === 'm' || k === 'M') && D.rows[current][8] >= 0) match('/api/similar?row=' + D.rows[current][8], 'like ' + D.rows[current][0].split('/').pop());
   else if (current >= 0 && (k === 'c' || k === 'C')) copy(current);
-  else if (current >= 0 && (k === 's' || k === 'S')) { const p = D.rows[current][0]; picked.has(p) ? picked.delete(p) : picked.add(p); redraw(current); updatePicked(); }
+  else if (current >= 0 && k === 's' && D.rows[current][8] >= 0) match('/api/like?p=' + encodeURIComponent(D.rows[current][0]) + '&avoid=' + encodeURIComponent($('#avoid').value), 'more like this');
 });
 load().catch(e => { $('#status').textContent = 'Could not load: ' + e.message; });
 </script>

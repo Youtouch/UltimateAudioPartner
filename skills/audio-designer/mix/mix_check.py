@@ -635,19 +635,41 @@ def selftest():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("check", help="synthetic CPU-only positive and broken-input self-tests")
-    calibration = commands.add_parser("calibrate", help="derive levels from one or more approved aligned stem directories")
-    calibration.add_argument("--stems", type=Path, nargs="+", required=True)
+    parser = argparse.ArgumentParser(
+        description='Measure aligned stems and check loudness, peaks and balance.',
+        epilog='Example: python mix/mix_check.py stems --voice voice.wav --music music.wav --mix final.wav',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    commands = parser.add_subparsers(dest="command", required=True, title='commands', help='available commands')
+    commands.add_parser(
+        'check',
+        help='synthetic CPU-only positive and broken-input self-tests',
+        description='Run synthetic checks without a library or model download.',
+        epilog='Example: python mix/mix_check.py check',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    calibration = commands.add_parser(
+        'calibrate',
+        help='derive levels from one or more approved aligned stem directories',
+        description='Derive reusable level thresholds from approved aligned stem directories.',
+        epilog='Example: python mix/mix_check.py calibrate --stems ApprovedMix --out levels.json',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    calibration.add_argument("--stems", type=Path, nargs="+", required=True, help='approved directories containing aligned voice, music and optional bed or sfx stems')
     calibration.add_argument("--out", type=Path, required=True, help="write a shared checker/renderer levels JSON")
     for name in ("stems", "report"):
-        command = commands.add_parser(name, help="measure aligned stems" if name == "stems" else "cue-sheet Markdown")
-        command.add_argument("--voice", type=Path)
-        command.add_argument("--music", type=Path)
-        command.add_argument("--bed", type=Path)
-        command.add_argument("--sfx", type=Path, nargs="+", action="extend", default=[])
-        command.add_argument("--mix", type=Path)
+        command = commands.add_parser(
+            name,
+            help='measure aligned stems' if name == 'stems' else 'cue-sheet Markdown',
+            description='Check aligned stems with applied gains.' if name == 'stems' else 'Render a Markdown cue report from aligned stems or saved measurement JSON.',
+            epilog=f'Example: python mix/mix_check.py {name} --voice voice.wav --music music.wav',
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        )
+        command.add_argument("--voice", type=Path, help='aligned voice stem with gain already applied')
+        command.add_argument("--music", type=Path, help='aligned music stem with gain already applied')
+        command.add_argument("--bed", type=Path, help='optional aligned ambience stem with gain already applied')
+        command.add_argument("--sfx", type=Path, nargs="+", action="extend", default=[], help='optional aligned effect stems with gains already applied (repeatable)')
+        command.add_argument("--mix", type=Path, help='optional final mix for master loudness and true-peak checks')
         command.add_argument("--levels", type=Path, help="calibrated levels JSON; omitted uses studio defaults")
         if name == "stems":
             command.add_argument("--json", action="store_true", help="emit measurements as JSON to stdout")
