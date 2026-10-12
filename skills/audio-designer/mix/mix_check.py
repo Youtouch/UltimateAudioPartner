@@ -3,6 +3,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import copy
 import json
 import math
 from pathlib import Path
@@ -54,6 +55,140 @@ THRESHOLDS = {
                   "policy": "EBU absolute gate; -70 sentinel is unavailable, not a measured quiet level"},
 }
 
+# Baked stems reveal relative levels, not compressor threshold/attack/release.
+# Calibration keeps these approved starting settings; a levels file can override
+# them explicitly. Keep the renderer's no-file defaults identical to these.
+DEFAULT_DUCK = {
+    "music": {"threshold_db_re_voice": -3.8, "attack_ms": 20.0, "release_ms": 400.0},
+    "bed": {"threshold_db_re_voice": -13.3, "attack_ms": 10.0, "release_ms": 350.0},
+}
+
+# Margins/tolerances are shared by calibration and its saved policy description.
+# Keep full measured precision; assessment itself rounds to 0.1 LU/dB as before.
+CALIBRATION_POLICY = {
+    "music_gap": {"margin": 1.5, "tolerance": 2.0, "unit": "LU"},
+    "bed_gap": {"margin": 2.0, "tolerance": 4.0, "unit": "LU"},
+    "sfx_gap": {"margin": 1.0, "tolerance": 3.0, "unit": "dB"},
+}
+
+
+def validate_levels(value):
+    """Resolve a JSON policy into independent validated defaults plus overrides."""
+    if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
+        raise ValueError("Unsupported levels JSON schema (expected schema: 1)")
+    result = copy.deepcopy(value)
+    for section, defaults in (("thresholds", THRESHOLDS), ("ducking", DEFAULT_DUCK)):
+        supplied = value.get(section, {})
+        if not isinstance(supplied, dict):
+            raise ValueError(f"levels.{section} must be an object")
+        merged = copy.deepcopy(defaults)
+        for name, fields in supplied.items():
+            if name not in defaults or not isinstance(fields, dict):
+                raise ValueError(f"Unknown or invalid levels.{section}.{name}")
+            for key, item in fields.items():
+                if key not in defaults[name]:
+                    raise ValueError(f"Unknown levels.{section}.{name}.{key}")
+                expected = defaults[name][key]
+                if isinstance(expected, (float, int)):
+                    if isinstance(item, bool) or not isinstance(item, (float, int)) or not math.isfinite(item):
+                        raise ValueError(f"levels.{section}.{name}.{key} must be finite numeric")
+                elif not isinstance(item, str):
+                    raise ValueError(f"levels.{section}.{name}.{key} must be text")
+                merged[name][key] = item
+        result[section] = merged
+    thresholds = result["thresholds"]
+    for name in CALIBRATION_POLICY:
+        spec = thresholds[name]
+        if spec["warn_min"] > spec["min"] or spec["min"] > spec.get("max", math.inf):
+            raise ValueError(f"levels.{name} requires warn_min <= min <= max")
+    for name in ("voice_lufs", "mix_lufs"):
+        if not 0 <= thresholds[name]["pass_delta"] <= thresholds[name]["warn_delta"]:
+            raise ValueError(f"levels.{name} requires 0 <= pass_delta <= warn_delta")
+    if thresholds["mix_peak"]["pass_max"] > thresholds["mix_peak"]["warn_max"]:
+        raise ValueError("levels.mix_peak requires pass_max <= warn_max")
+    if thresholds["stem_peak"]["pass_max"] >= thresholds["stem_peak"]["fail_min"]:
+        raise ValueError("levels.stem_peak requires pass_max < fail_min")
+    gate = thresholds["gate"]
+    if gate["frame_s"] <= 0 or gate["minimum_s"] <= 0 or gate["relative_db"] < 0 or not 0 <= gate["percentile"] <= 100:
+        raise ValueError("Invalid levels.gate frame, duration, depth or percentile")
+    decimals = thresholds["measurement"]["decimals"]
+    if isinstance(decimals, bool) or not isinstance(decimals, int) or not 0 <= decimals <= 6:
+        raise ValueError("levels.measurement.decimals must be an integer from 0 to 6")
+    if (not 0 <= thresholds["brightness"]["fraction"] <= 1
+            or thresholds["coverage"]["tolerance_s"] < 0 or thresholds["sfx_overlap"]["max"] < 0):
+        raise ValueError("Invalid levels brightness, coverage or overlap boundary")
+    if thresholds["brightness"]["hz"] != THRESHOLDS["brightness"]["hz"]:
+        raise ValueError("levels.brightness.hz must remain 3500 (the shared spectral band's fixed split)")
+    for name, spec in result["ducking"].items():
+        if not .01 <= spec["attack_ms"] <= 2000 or not .01 <= spec["release_ms"] <= 9000:
+            raise ValueError(f"levels.ducking.{name} attack must be 0.01-2000 ms; release 0.01-9000 ms (FFmpeg limits)")
+    return result
+
+
+def load_levels(path):
+    """Read the shared checker/renderer schema; never mutate studio defaults."""
+    with Path(path).expanduser().open(encoding="utf-8-sig") as source:
+        return validate_levels(json.load(source))
+
+
+def calibrate(directories):
+    """Measure approved aligned stems with exactly the checker's gap/gate code."""
+    if not directories:
+        raise ValueError("At least one approved stem directory is required")
+    levels = validate_levels({"schema": 1})
+    measurements = []
+    approved = {name: [] for name in CALIBRATION_POLICY}
+    for directory in directories:
+        directory = Path(directory).expanduser().resolve(strict=True)
+        if not directory.is_dir():
+            raise ValueError("Not a stem directory: " + str(directory))
+        voice, music = directory / "voice.wav", directory / "music.wav"
+        for required in (voice, music):
+            if not required.is_file():
+                raise ValueError("Missing required calibration stem: " + str(required))
+        bed, sfx = directory / "bed.wav", directory / "sfx.wav"
+        result = inspect_mix(voice, music, bed if bed.is_file() else None,
+                             [sfx] if sfx.is_file() else [])
+        metrics = {metric["key"]: metric for metric in result["metrics"]}
+        if metrics["voice.gate"]["status"] == "FAIL":
+            raise ValueError("No usable voice activity in " + str(directory))
+        record = {"name": directory.name}
+        for rule, key, field in (("music_gap", "music.gap_on", "music_gap_lu"),
+                                 ("bed_gap", "bed.gap_on", "bed_gap_lu"),
+                                 ("sfx_gap", "sfx1.peak_gap", "sfx_peak_gap_db")):
+            if key not in metrics:
+                continue
+            measured = metrics[key]["value"]
+            if measured is None or not math.isfinite(measured):
+                raise ValueError(f"Unavailable approved {field} in {directory}")
+            if rule != "sfx_gap" and metrics[key.split(".", 1)[0] + ".coverage"]["value"] < 100 - 1e-7:
+                raise ValueError("Calibration stems must cover the full voice timeline: " + str(directory))
+            approved[rule].append(measured)
+            record[field] = [measured] if rule == "sfx_gap" else measured
+        record["music_duck_lu"] = metrics["music.duck"]["value"]
+        measurements.append(record)
+    for name, observations in approved.items():
+        if not observations:
+            continue
+        policy = CALIBRATION_POLICY[name]
+        minimum = min(observations) - policy["margin"]
+        spec = levels["thresholds"][name]
+        spec["min"], spec["warn_min"] = minimum, minimum - policy["tolerance"]
+        # An approved unusually quiet layer must remain inside the PASS range.
+        if "max" in spec:
+            spec["max"] = max(spec["max"], max(observations))
+        spec["policy"] = (f"calibrated: lowest approved {min(observations):.4g} {policy['unit']} "
+                          f"minus {policy['margin']:g} margin; {policy['tolerance']:g} tolerance; "
+                          "upper boundary retained or extended to include approved observations")
+    levels["calibration"] = {
+        "mixes": measurements,
+        "policy": copy.deepcopy(CALIBRATION_POLICY),
+        "notes": ["Gaps use the checker measurement and energy gate; listening approval is supplied by you.",
+                  "Absent optional bed/effects keep studio defaults.",
+                  "Compressor threshold, attack and release cannot be inferred from baked stems; ducking keeps defaults and may be edited explicitly."],
+    }
+    return validate_levels(levels)
+
 # Import only the existing numpy/stdlib helpers, without writing into scripts/.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import audio_map
@@ -96,12 +231,12 @@ def k_weight(y, sr):
     return lfilter([1.0, -2.0, 1.0], [1.0, -1.99004745483398, 0.99007225036621], y, axis=0)
 
 
-def energy_frames(y, sr):
+def energy_frames(y, sr, thresholds=None):
     """K-weighted mean channel power, never a mono sum (antiphase stereo must survive)."""
     if y.ndim == 1:
         y = y[:, None]
     y = k_weight(y.astype(np.float64), sr)
-    size = round(sr * THRESHOLDS["gate"]["frame_s"])
+    size = max(1, round(sr * (thresholds or THRESHOLDS)["gate"]["frame_s"]))
     full, tail = divmod(len(y), size)
     power = np.mean(y[:full * size].reshape(full, size, y.shape[1]).astype(np.float64) ** 2,
                     axis=(1, 2)) if full else np.empty(0)
@@ -119,15 +254,16 @@ def level(power, counts, mask):
     return 10 * math.log10(mean) if mean > 0 else None
 
 
-def target_status(value, rule):
-    spec = THRESHOLDS[rule]
+def target_status(value, rule, thresholds=None):
+    spec = (thresholds or THRESHOLDS)[rule]
     delta = abs(value - spec["target"])
     return "PASS" if delta <= spec["pass_delta"] else "WARN" if delta <= spec["warn_delta"] else "FAIL"
 
 
-def gap_status(value, rule, bright=False):
-    value = round(value, THRESHOLDS["measurement"]["decimals"])
-    spec = THRESHOLDS[rule]
+def gap_status(value, rule, bright=False, thresholds=None):
+    thresholds = thresholds or THRESHOLDS
+    value = round(value, thresholds["measurement"]["decimals"])
+    spec = thresholds[rule]
     extra = 0
     if value < spec["warn_min"] + extra:
         return "FAIL"
@@ -136,8 +272,10 @@ def gap_status(value, rule, bright=False):
     return "PASS"
 
 
-def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
-    result = {"schema": 1, "rows": [], "metrics": [], "notes": [
+def inspect_mix(voice, music, bed=None, sfx=(), mix=None, levels=None):
+    policy = (validate_levels(levels) if isinstance(levels, dict) else load_levels(levels)) if levels is not None else None
+    thresholds = policy["thresholds"] if policy is not None else THRESHOLDS
+    result = {"schema": 1, "thresholds": copy.deepcopy(thresholds), "rows": [], "metrics": [], "notes": [
         "Measured evidence only; listening pending. No models, tags or network calls.",
         "Inputs must be edited, aligned at time zero, and have their gains/ducking baked in.",
         "Gaps are K-weighted (BS.1770, the LUFS filter) levels in gated speech windows, in LU; not differences of integrated LUFS.",
@@ -146,6 +284,8 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
         "The energy gate is not a voice detector. EQ, identity, coherence and masking remain unverified.",
         "INFO rows are reference measurements with no plan target. PASS/WARN/FAIL use approximate starting levels plus explicit local tolerances; see THRESHOLDS.",
     ]}
+    if policy is not None:
+        result["notes"].append("Assessment uses the supplied levels file; its effective thresholds are saved in this report.")
 
     def add(row, key, value, unit, status, rule, detail):
         if value is None or not math.isfinite(value):
@@ -154,7 +294,7 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
                 status = "WARN"
             detail = "Unavailable (silence, EBU gate, or no comparable windows). " + detail
         item = {"key": key, "value": value, "unit": unit, "status": status,
-                "source": THRESHOLDS[rule]["source"], "detail": detail}
+                "source": thresholds[rule]["source"], "detail": detail}
         result["metrics"].append(item)
         row["metrics"].append(item)
         return item
@@ -170,17 +310,17 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
             raise ValueError("No decoded audio: " + str(path))
         if not np.all(np.isfinite(y)):
             raise ValueError("Non-finite audio samples: " + str(path))
-        power, counts = energy_frames(y, sr)
+        power, counts = energy_frames(y, sr, thresholds)
         row = {"layer": role, "file": str(path), "duration_s": len(y) / sr,
                "duck_eq": "unknown; measure supplied audio", "metrics": []}
         result["rows"].append(row)
         tracks[key] = {"row": row, "power": power, "counts": counts, "sr": sr}
         meters = audio_map.loudness(path)  # whole file, ebur128=peak=true
         integrated = meters["integrated_lufs"]
-        if integrated <= THRESHOLDS["ebu_floor"]["lufs"]:
+        if integrated <= thresholds["ebu_floor"]["lufs"]:
             integrated = None
         rule = "mix_lufs" if key == "mix" else "voice_lufs"
-        status = target_status(integrated, rule) if integrated is not None and key in {"voice", "mix"} else (
+        status = target_status(integrated, rule, thresholds) if integrated is not None and key in {"voice", "mix"} else (
             "WARN" if key in {"voice", "mix"} else "INFO")
         detail = ("Target about -16 LUFS; PASS within 1 LU, WARN within 2 LU."
                   if key in {"voice", "mix"} else
@@ -188,12 +328,12 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
         add(row, key + ".integrated", integrated, "LUFS", status, rule if key in {"voice", "mix"} else "ebu_floor", detail)
         peak = meters["true_peak_dbtp"]
         if key == "mix":
-            spec = THRESHOLDS["mix_peak"]
+            spec = thresholds["mix_peak"]
             status = "PASS" if peak <= spec["pass_max"] else "WARN" if peak <= spec["warn_max"] else "FAIL"
             rule = "mix_peak"
             detail = "Ceiling -1.5 dBTP; WARN up to -1.0, FAIL above."
         else:
-            spec = THRESHOLDS["stem_peak"]
+            spec = thresholds["stem_peak"]
             status = "FAIL" if peak >= spec["fail_min"] else "PASS" if peak <= spec["pass_max"] else "WARN"
             rule = "stem_peak"
             detail = "No clipping: FAIL at/above 0 dBTP; WARN above -1.5 headroom."
@@ -202,21 +342,21 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
         if key == "bed":
             # The shared bands split at exactly 3500 Hz; sum the two upper bands.
             fraction = sum(audio_map.band_shares(y, sr)[3:]) if np.any(power > 0) else None
-            bright = fraction is not None and fraction > THRESHOLDS["brightness"]["fraction"]
+            bright = fraction is not None and fraction > thresholds["brightness"]["fraction"]
             tracks[key]["bright"] = bright
             add(row, "bed.brightness", fraction * 100 if fraction is not None else None, "%",
                 "INFO", "brightness",
                 "Energy above 3.5 kHz (unweighted); the K-weighted gap already counts the highs louder.")
             lra = meters["loudness_range_lu"]
             add(row, "bed.lra", lra if integrated is not None else None, "LU",
-                "WARN" if lra >= THRESHOLDS["bed_lra"]["warn_min"] else "PASS", "bed_lra",
+                "WARN" if lra >= thresholds["bed_lra"]["warn_min"] else "PASS", "bed_lra",
                 "Bursts: WARN at/above 18 LU LRA; short clips can understate range.")
         del y
         return tracks[key]
 
     v = track("Voice", "voice", voice)
     p, c = v["power"], v["counts"]
-    gate = THRESHOLDS["gate"]
+    gate = thresholds["gate"]
     positive = p[p > 0]
     gate_db = max(gate["floor_dbfs"], 10 * math.log10(float(np.percentile(positive, gate["percentile"])))
                   - gate["relative_db"]) if len(positive) else gate["floor_dbfs"]
@@ -243,7 +383,7 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
         on_level = level(t["power"][:n], weights, on)
         off_level = level(t["power"][:n], weights, off)
         gap_on = voiced - on_level if voiced is not None and on_level is not None else None
-        tolerance = THRESHOLDS["coverage"]["tolerance_s"]
+        tolerance = thresholds["coverage"]["tolerance_s"]
         delta = row["duration_s"] - v["row"]["duration_s"]
         coverage = float(weights.sum()) / float(c.sum()) * 100
         short = "FAIL" if key == "music" else "WARN"  # music going silent is a known failure; a bed may be placed spots
@@ -252,12 +392,13 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
         add(row, key + ".level_on", on_level, "dB K-weighted", "INFO", "gate",
             "Level in shared voice-active windows; reference measurement, no absolute plan target.")
         rule = "music_gap" if key == "music" else "bed_gap"
+        spec = thresholds[rule]
         bright = key == "bed" and t["bright"]
         add(row, key + ".gap_on", gap_on, "LU",
-            gap_status(gap_on, rule, bright) if gap_on is not None else "WARN", rule,
-            "Voice minus layer during gated speech. " + (
-                "PASS 6-20 LU; WARN 4-6 or >20; FAIL <4." if key == "music" else
-                "PASS >=30 LU; WARN 26-30; FAIL <26."))
+            gap_status(gap_on, rule, bright, thresholds) if gap_on is not None else "WARN", rule,
+            "Voice minus layer during gated speech. "
+            f"PASS >= {spec['min']:.1f} LU" + (f" and <= {spec['max']:.1f} LU" if "max" in spec else "")
+            + f"; WARN below PASS or above its upper boundary; FAIL < {spec['warn_min']:.1f} LU.")
         if key == "music":
             row["duck_eq"] = "outside-minus-inside level difference; EQ unknown"
             add(row, "music.level_off", off_level, "dB K-weighted", "INFO", "gate",
@@ -269,7 +410,7 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
                     and pause_s >= gate["minimum_s"] and active_s >= gate["minimum_s"]
                     and float(weights[off].sum()) / v["sr"] >= gate["minimum_s"]) else None
             if duck is not None:
-                duck = round(duck, THRESHOLDS["measurement"]["decimals"])
+                duck = round(duck, thresholds["measurement"]["decimals"])
             add(row, "music.duck", duck, "LU", "INFO", "duck",
                 "Music level outside speech minus inside. Reported only; natural dynamics can mimic ducking.")
         else:
@@ -284,16 +425,19 @@ def inspect_mix(voice, music, bed=None, sfx=(), mix=None):
         n = min(len(p), len(t["power"]))
         weights = np.minimum(c[:n], t["counts"][:n])
         peak_gap = v["peak"] - t["peak"] if math.isfinite(v["peak"]) and math.isfinite(t["peak"]) else None
+        spec = thresholds["sfx_gap"]
         add(t["row"], key + ".peak_gap", peak_gap, "dB",
-            gap_status(peak_gap, "sfx_gap") if peak_gap is not None else "WARN", "sfx_gap",
-            "Voice true peak minus effect true peak; PASS 6-14 dB; WARN 3-6 or >14; FAIL <3.")
+            gap_status(peak_gap, "sfx_gap", thresholds=thresholds) if peak_gap is not None else "WARN", "sfx_gap",
+            "Voice true peak minus effect true peak; "
+            f"PASS {spec['min']:.1f}-{spec['max']:.1f} dB; "
+            f"WARN below PASS or above its upper boundary; FAIL < {spec['warn_min']:.1f} dB.")
         positive = t["power"][t["power"] > 0]
         threshold = max(gate["floor_dbfs"], 10 * math.log10(float(np.percentile(positive, gate["percentile"])))
                         - gate["relative_db"]) if len(positive) else gate["floor_dbfs"]
         activity = t["power"][:n] > 10 ** (threshold / 10)
         overlap = float(weights[activity & active[:n]].sum()) / v["sr"]
         add(t["row"], key + ".overlap", overlap, "s",
-            "FAIL" if overlap > THRESHOLDS["sfx_overlap"]["max"] + 1e-9 else "PASS", "sfx_overlap",
+            "FAIL" if overlap > thresholds["sfx_overlap"]["max"] + 1e-9 else "PASS", "sfx_overlap",
             "Effect activity under voice fails beyond one 0.1 s frame (the gate's edge).")
         t["row"]["duck_eq"] = "effect/spot-call pause rule; game/UI intent unknown"
     if mix is not None:
@@ -325,7 +469,7 @@ def markdown_report(result):
         lines.append("| " + " | ".join(cell(v) for v in values) + " |")
     lines += ["", *["- " + note for note in result["notes"]], "",
               "Assessment rules (numeric tolerances are documented local policies):", ""]
-    for name, spec in THRESHOLDS.items():
+    for name, spec in result.get("thresholds", THRESHOLDS).items():
         lines.append(f'- {name}: {spec["source"]}; {spec["policy"]}.')
     return "\n".join(lines)
 
@@ -494,6 +638,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("check", help="synthetic CPU-only positive and broken-input self-tests")
+    calibration = commands.add_parser("calibrate", help="derive levels from one or more approved aligned stem directories")
+    calibration.add_argument("--stems", type=Path, nargs="+", required=True)
+    calibration.add_argument("--out", type=Path, required=True, help="write a shared checker/renderer levels JSON")
     for name in ("stems", "report"):
         command = commands.add_parser(name, help="measure aligned stems" if name == "stems" else "cue-sheet Markdown")
         command.add_argument("--voice", type=Path)
@@ -501,6 +648,7 @@ def main(argv=None):
         command.add_argument("--bed", type=Path)
         command.add_argument("--sfx", type=Path, nargs="+", action="extend", default=[])
         command.add_argument("--mix", type=Path)
+        command.add_argument("--levels", type=Path, help="calibrated levels JSON; omitted uses studio defaults")
         if name == "stems":
             command.add_argument("--json", action="store_true", help="emit measurements as JSON to stdout")
         else:
@@ -509,9 +657,15 @@ def main(argv=None):
     if args.command == "check":
         return selftest()
     try:
+        if args.command == "calibrate":
+            levels = calibrate(args.stems)
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(levels, indent=2, ensure_ascii=True, allow_nan=False) + "\n", encoding="utf-8")
+            print(f"Calibrated {len(args.stems)} approved mixes -> {args.out}; listening approval supplied by you.")
+            return 0
         if args.command == "report" and args.input:
-            if any((args.voice, args.music, args.bed, args.sfx, args.mix)):
-                parser.error("--input cannot be combined with stem arguments")
+            if any((args.voice, args.music, args.bed, args.sfx, args.mix, args.levels)):
+                parser.error("--input cannot be combined with stem arguments or --levels (it uses the saved thresholds)")
             if args.input == "-":
                 result = json.load(sys.stdin)
             else:
@@ -522,7 +676,7 @@ def main(argv=None):
         else:
             if args.voice is None or args.music is None:
                 parser.error("--voice and --music are required")
-            result = inspect_mix(args.voice, args.music, args.bed, args.sfx, args.mix)
+            result = inspect_mix(args.voice, args.music, args.bed, args.sfx, args.mix, levels=args.levels)
         if args.command == "report":
             print(markdown_report(result))
         elif args.json:

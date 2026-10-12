@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 from audio_map import band_shares, load_audio, loudness, loudness_samples, probe, rms_blocks
+from library_metadata import read_metadata, relative_path
 
 BAND_FIELDS = ['band_0_300', 'band_300_1500', 'band_1500_3500', 'band_3500_8000', 'band_8000_plus']
 FIELDS = ['relative_path', 'size_bytes', 'mtime_ns', 'duration_seconds', 'channels',
@@ -57,7 +58,7 @@ def guesses(relative, duration, density):
              ('wind', ('wind', 'breeze')),
              ('insects', ('insect', 'cricket', 'cicada', 'bug', 'mosquito'))]
     biome = next((name for name, words in rules if any(w in text for w in words)), 'unknown')
-    parts = Path(relative).parts
+    parts = relative_path(relative).split('/')
     source = '/'.join(parts[:2]) if parts[0].lower() == 'audiohero' and len(parts) > 1 else parts[0]
     role = 'single call' if duration <= 8 and density > 0 else 'bed' if duration >= 10 else 'other'
     return biome, source, role
@@ -110,13 +111,24 @@ def selected(root, only):
         return sorted(p for p in root.rglob('*') if p.is_file() and p.suffix.lower() in
                       {'.wav', '.mp3', '.ogg', '.flac', '.aif', '.aiff', '.m4a', '.aac', '.opus'}
                       and fnmatch.fnmatch(p.relative_to(root).as_posix().lower(), only.lower()))
-    ledger = root / 'AUDIO_LEDGER_files.csv'
-    with ledger.open(encoding='utf-8-sig', newline='') as source:
-        rows = list(csv.DictReader(source))
-    if not rows or not {'relative_path', 'kind_guess'} <= rows[0].keys():
-        raise ValueError('Ledger needs relative_path and kind_guess; use --only for other libraries')
-    # Unknown is not evidence of non-music. The ledger explicitly marks sfx and voice.
-    return sorted({root / r['relative_path'] for r in rows if r['kind_guess'].lower() in {'sfx', 'voice'}})
+    tags = {}
+    tag_csv = root / 'AUDIO_TAGS.csv'
+    if tag_csv.exists():
+        with tag_csv.open(encoding='utf-8-sig', newline='') as source:
+            tags = {relative_path(row['relative_path']): row for row in csv.DictReader(source)}
+    rows = read_metadata(root, tags)
+    def non_music(path, row):
+        kind = row.get('kind_guess', '').lower()
+        if kind:  # Preserve an existing ledger's explicit studio classifications.
+            return kind in {'sfx', 'voice'}
+        tag = tags.get(path, {})
+        if not tag:
+            return False
+        # Without a classification, exclude positively recognised music; this is a candidate guess.
+        from audio_search import PAIR
+        score = float(tag.get('music') or dict(PAIR.findall(tag.get('top_labels', ''))).get('Music') or 0)
+        return score < 0.5
+    return sorted({root / path for path, row in rows.items() if non_music(path, row)})
 
 
 def write_guide(out, rows):

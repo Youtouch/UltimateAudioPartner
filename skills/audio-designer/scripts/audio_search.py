@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from library_metadata import read_metadata, relative_path
 
 DIM = 512
 RRF_K = 60
@@ -52,7 +53,9 @@ def words(text):
 
 def clean_name(rel, pack=''):
     """'FL_GFX_UI_Click_30.wav' under its pack -> 'ui clicks click'. Pack words are dropped: every file in it has them."""
-    parts = rel.split('/')
+    parts = relative_path(rel).split('/')
+    if len(parts) == 1:
+        parts.insert(0, '__catalogue__')
     pack_words = set(words(pack)) | set(words(parts[0]))
     folders = [p for p in parts[1:-1] if p.lower() != pack.lower()][-2:]
     return ' '.join(w for w in words(' '.join(folders + [parts[-1].rsplit('.', 1)[0]])) if w not in pack_words)
@@ -114,14 +117,10 @@ class Index:
         tags = {}
         with (self.root / 'AUDIO_TAGS.csv').open(encoding='utf-8', newline='') as f:
             for r in csv.DictReader(f):
-                tags[r['relative_path']] = r  # last row wins
-        packs, seconds = {}, {}
-        ledger = self.root / 'AUDIO_LEDGER_files.csv'
-        if ledger.exists():
-            with ledger.open(encoding='utf-8-sig', newline='') as f:
-                ledger_rows = list(csv.DictReader(f))
-            packs = {r['relative_path']: r.get('pack', '') for r in ledger_rows}
-            seconds = {r['relative_path']: float(r.get('duration_seconds') or 0) for r in ledger_rows}
+                tags[relative_path(r['relative_path'])] = r  # last row wins
+        metadata = read_metadata(self.root, tags)
+        packs = {path: row.get('pack', '') for path, row in metadata.items()}
+        seconds = {path: float(row.get('duration_seconds') or 0) for path, row in metadata.items()}
         audio = np.fromfile(self.root / 'AUDIO_TAGS_clap.f32', '<f4')
         audio = audio[:len(audio) // DIM * DIM].reshape(-1, DIM)
         self.paths, self.names, rows = [], [], []
@@ -216,11 +215,16 @@ def like_score(approved, rejected):
     return approved - 0.5 * np.maximum(0, rejected - approved)
 
 
-def like(index, approved, rejected=(), avoid=None, min_seconds=0, top=20):
+def like(index, approved, rejected=(), avoid=None, min_seconds=0, top=20, exact=False):
     """Files that sound like the approved examples and unlike the rejected ones (path substrings), by audio vector.
     `avoid` drops any file whose path or labels (any analysed window) match the regex: a missing label is not an absence,
-    so name the words too (Voice, Lyric, Vocal)."""
-    pick = lambda subs: [i for i, p in enumerate(index.paths) if any(s.lower() in p.lower() for s in subs)]
+    so name the words too (Voice, Lyric, Vocal). Set exact=True for saved relative paths."""
+    # Saved verdicts identify exact files; the CLI retains its convenient substring matching.
+    def pick(examples):
+        if exact:
+            wanted = {relative_path(example) for example in examples}
+            return [i for i, path in enumerate(index.paths) if path in wanted]
+        return [i for i, path in enumerate(index.paths) if any(example.lower() in path.lower() for example in examples)]
     a, r = pick(approved), pick(rejected)
     if not a:
         raise SystemExit('no library file matches the approved examples: ' + ', '.join(approved))

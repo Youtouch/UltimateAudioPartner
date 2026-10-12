@@ -1,7 +1,7 @@
 # Mix checker
 
 CPU-only, read-only measurements against ../references/mix-plan.md. Requires
-Python 3.10+, numpy, ffmpeg and ffprobe, already installed. No pip install,
+Python 3.10+, numpy, scipy, ffmpeg and ffprobe, already installed. No pip install,
 network, recognition models, GPU work, or audio output from the checker.
 
 Run from the audio-designer skill folder:
@@ -34,6 +34,60 @@ with the full report still printed; 1 = decoding, metering or other input error.
 Argument syntax errors use argparse's exit code 2. check returns 0 only when
 every self-test passes, otherwise 1.
 
+## Calibrate on approved mixes
+
+Put each mix you approved by ear in a separate directory containing aligned
+`voice.wav` and `music.wav`, with gains and ducking already baked in. Optional
+`bed.wav` and `sfx.wav` use the same timeline; include silence before a late
+effect. Calibration reads those files and writes only the requested JSON.
+
+~~~sh
+python mix/mix_check.py calibrate --stems approved/mix-a approved/mix-b --out levels.json
+python mix/mix_check.py stems --voice voice.wav --music music.wav --bed bed.wav --levels levels.json
+python render/render_mix.py render cue.csv --out rendered --levels levels.json
+python mix/calibration_tests.py
+~~~
+
+The checker measures the same K-weighted voice-active gaps and true-peak gaps
+used by `stems`; it does not compare whole-file integrated LUFS. One approved
+mix is enough. Several mixes make the lowest approved gap the reference:
+
+| Rule | PASS minimum | FAIL below |
+|---|---|---|
+| Music | Lowest approved speech gap minus 1.5 LU | PASS minimum minus 2 LU |
+| Bed | Lowest approved speech gap minus 2 LU | PASS minimum minus 4 LU |
+| Calls | Lowest approved voice-to-effect true-peak gap minus 1 dB | PASS minimum minus 3 dB |
+
+Values between FAIL and PASS are WARN. Music/call upper PASS bounds retain
+their defaults (20 LU / 14 dB), extending only when an approved observation
+exceeds them. Missing optional bed/calls retain their default rules. Silent
+voice, unavailable gaps and incomplete music/bed timelines are rejected;
+approval by ear does not make an unavailable measurement usable.
+
+`levels.json` has `schema: 1`, a `thresholds` object using the `THRESHOLDS`
+field names, a `ducking` object, and `calibration` records with the measured
+gaps, observed music dip and the margins used. Both tools validate it before
+using it. `stems --json` saves the effective thresholds; `report --input`
+uses those saved values, so an old report keeps its own assessment policy.
+Plain `report` also accepts `--levels`.
+
+The `ducking` music/bed entries contain `threshold_db_re_voice`, `attack_ms`
+and `release_ms`. Baked stems cannot identify compressor settings, so the
+calibrator preserves the approved starting settings: music -3.8 dB / 20 ms /
+400 ms; bed -13.3 dB / 10 ms / 350 ms. Edit those entries explicitly if your
+studio uses different settings. Attack accepts 0.01-2000 ms and release
+0.01-9000 ms, the FFmpeg ranges. The shared band's 3.5 kHz brightness split
+is fixed. The measured music dip is evidence about the result and can also
+reflect arrangement changes. Calibration changes level
+assessment; it does not infer a compressor or guarantee that rendering a
+different cue sheet will pass.
+
+Omitting `--levels` keeps all current thresholds and ducking settings. The
+synthetic historical-gap test calibrates music 7.6/7.4 LU, beds 35.5/31.9 LU
+and calls 9.0/7.2 dB, then compares with today's defaults. Resulting music/bed
+minimums differ by about -0.1 LU and call minimums by +0.2 dB, within 0.5.
+Defaults are deliberately retained. Listening is always pending.
+
 ## Inputs and timeline
 
 Supply the edited stems AFTER gain, ducking and EQ, already aligned at time
@@ -49,10 +103,10 @@ but excluded from voice-window comparisons. Effect files may end earlier.
 
 ## What the measurements mean
 
-All assessment thresholds are in THRESHOLDS at the top of mix_check.py, with
+Default assessment thresholds are in THRESHOLDS at the top of mix_check.py, with
 source line numbers in mix-plan.md. The plan says these are starting points,
 not standards, and project profiles take precedence. This checker uses that
-default plan; it does not load a project profile. Local tolerances needed to
+default plan unless `--levels` is supplied; it does not load a project profile. Local tolerances needed to
 turn "about", "ducked further" and "lower still" into statuses are explicitly
 labelled policy, not attributed to the plan as exact numbers. Gap assessments
 use displayed 0.1 dB precision to avoid a rounded 30.0 receiving a boundary WARN.

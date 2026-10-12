@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 
 from audio_map import load_audio
+from library_metadata import refresh_ledger, write_csv_atomic
 
 AST = 'MIT/ast-finetuned-audioset-10-10-0.4593'
 # CED runs model code from its Hugging Face repo: pinned to the revision whose code was reviewed (2026-10-11).
@@ -157,6 +158,10 @@ def library(root, only, out, seconds, batch=16):
     """Resumable pass: tags to `out` (CSV), CLAP vectors to `<out>_clap.f32` (512 float32 per row,
     row index in `clap_row`). A changed file appends a new row; readers keep the last row per path."""
     from concurrent.futures import ThreadPoolExecutor
+    root, out = Path(root), Path(out)
+    if not root.is_dir():
+        raise ValueError(f'Library folder does not exist: {root}')
+    out.parent.mkdir(parents=True, exist_ok=True)
     done = {}
     if out.exists():
         with out.open(encoding='utf-8', newline='') as f:
@@ -164,8 +169,11 @@ def library(root, only, out, seconds, batch=16):
             if 'tagger' not in (reader.fieldnames or []):
                 sys.exit(f'{out} predates the tagger column: run `audio_tag.py relabel --root {root}` first')
             done = {r['relative_path']: r for r in reader}
-    files = sorted(p for p in root.rglob('*') if p.suffix.lower() in AUDIO and p.is_file()
-                   and fnmatch.fnmatch(p.relative_to(root).as_posix().lower(), (only or '*').lower()))
+    all_files = sorted(p for p in root.rglob('*') if p.suffix.lower() in AUDIO and p.is_file())
+    # Full-length metadata is independent of the recognition excerpt and --only selection.
+    refresh_ledger(root, all_files)
+    files = [p for p in all_files
+             if fnmatch.fnmatch(p.relative_to(root).as_posix().lower(), (only or '*').lower())]
     todo = []
     for path in files:
         rel, stat = path.relative_to(root).as_posix(), path.stat()
@@ -175,6 +183,7 @@ def library(root, only, out, seconds, batch=16):
     print(f'{len(files)} files, {len(todo)} to tag', file=sys.stderr, flush=True)
     vectors = out.with_name(out.stem + '_clap.f32')
     new = not out.exists()
+    tagged, skipped = 0, []
     with out.open('a', encoding='utf-8', newline='') as f, vectors.open('ab') as v, ThreadPoolExecutor(4) as pool:
         writer = csv.DictWriter(f, FIELDS)
         if new:
@@ -190,7 +199,9 @@ def library(root, only, out, seconds, batch=16):
                     r = summarise(*tag_samples(y16, 16000))
                     vec = embed_audio([y48[:48000 * 10]])[0].astype('<f4')
                 except Exception as exc:  # one bad file must not stop a 35k-file pass
-                    print(f'SKIP {rel}: {exc}', file=sys.stderr, flush=True)
+                    reason = str(exc).strip() or type(exc).__name__
+                    skipped.append({'relative_path': rel, 'reason': reason})
+                    print(f'SKIP {rel}: {reason}', file=sys.stderr, flush=True)
                     continue
                 row = v.tell() // (4 * len(vec))
                 v.write(vec.tobytes())
@@ -201,7 +212,12 @@ def library(root, only, out, seconds, batch=16):
                     save_clap_settings(vectors, settings)
                 writer.writerow(tag_row(rel, stat.st_size, stat.st_mtime_ns, r, round(len(y16) / 16000, 2), row, TAGGER))
                 f.flush()
+                tagged += 1
             print(f'{min(b + batch, len(todo))}/{len(todo)}', file=sys.stderr, flush=True)
+    write_csv_atomic(root / 'AUDIO_TAGS_skipped.csv', ['relative_path', 'reason'], skipped)
+    summary = {'tagged': tagged, 'unchanged': len(files) - len(todo), 'skipped': len(skipped)}
+    print('SUMMARY ' + ' '.join(f'{key}={value}' for key, value in summary.items()), file=sys.stderr, flush=True)
+    return summary
 
 
 def clap_settings(vectors):
@@ -415,12 +431,15 @@ def main():
         return check()
     if a.cmd == 'rank':
         return print(json.dumps(rank(a.query, a.files, a.seconds), indent=1))
-    if a.out:
-        if not a.root:
-            parser.error('--out needs --root')
-        return library(a.root, a.only, a.out, a.seconds)
-    files = a.files or [p for p in sorted(a.root.rglob('*')) if p.suffix.lower() in AUDIO and
-                        fnmatch.fnmatch(p.relative_to(a.root).as_posix().lower(), (a.only or '*').lower())]
+    if a.out and not a.root:
+        parser.error('--out needs --root')
+    if a.root:
+        if a.files:
+            parser.error('Use file arguments or --root, not both')
+        return library(a.root, a.only, a.out or a.root / 'AUDIO_TAGS.csv', a.seconds)
+    if not a.files:
+        parser.error('give audio files or --root')
+    files = a.files
     print(json.dumps({str(p): tag_file(p, a.seconds) for p in files}, indent=1))
 
 

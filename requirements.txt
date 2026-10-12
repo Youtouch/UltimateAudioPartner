@@ -1,10 +1,11 @@
-# Ultimate Audio Partner. Also needs FFmpeg and ffprobe on PATH.
-# For an NVIDIA GPU, install torch and torchaudio from the PyTorch index first, for example:
-#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
-numpy
-scipy
-soundfile
-librosa
-torch
-torchaudio
-transformers
+# Ultimate Audio Partner; Python 3.12.10. FFmpeg and ffprobe are also required.
+# Smoke-tested versions on 2026-10-12 (CUDA wheels: torch/torchaudio 2.11.0+cu128).
+# The upstream version pins also accept that local CUDA build and portable CPU wheels.
+# For NVIDIA, install matching wheels first using the PyTorch cu128 index.
+numpy==2.5.3
+scipy==1.18.1
+soundfile==0.14.0
+librosa==1.0.0
+torch==2.11.0
+torchaudio==2.11.0
+transformers==5.19.0

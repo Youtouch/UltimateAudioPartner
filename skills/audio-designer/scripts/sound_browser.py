@@ -13,6 +13,7 @@ import csv
 import json
 import mimetypes
 import re
+import os
 import subprocess
 import sys
 import threading
@@ -24,6 +25,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
+
+from library_metadata import read_metadata
 
 HERE = Path(__file__).resolve().parent
 PAIR = re.compile(r'(.+?) (\d+(?:\.\d+)?)(?:, |; |$)')
@@ -44,17 +47,12 @@ class Library:
 
     def payload(self):
         """Ledger rows joined with the latest tag row per path. Untagged files are listed too."""
-        ledger = {}
-        path = self.root / 'AUDIO_LEDGER_files.csv'
-        if path.exists():
-            with path.open(encoding='utf-8-sig', newline='') as f:
-                for r in csv.DictReader(f):
-                    ledger[r['relative_path']] = r
         tagged = {}
         if self.tags.exists():
-            with self.tags.open(encoding='utf-8', newline='') as f:
+            with self.tags.open(encoding='utf-8-sig', newline='') as f:
                 for r in csv.DictReader(f):
-                    tagged[r['relative_path']] = r  # last row wins: a changed file appends a new one
+                    tagged[r['relative_path']] = r
+        ledger = read_metadata(self.root, tagged)
         # Studio tags cross-referenced by tagging/vocab_tags.py: per file, tag -> which sources support it.
         # Bits: 1 name, 2 label, 4 audio. A tag with two or more bits is agreed; one bit is a candidate.
         vocab, vocab_index, vocab_tags = [], {}, {}
@@ -84,11 +82,11 @@ class Library:
             led, tag = ledger.get(rel, {}), tagged.get(rel)
             timeline = []
             if tag:
-                for part in tag['timeline'].split(' | '):
+                for part in tag.get('timeline', '').split(' | '):
                     span, _, labels = part.partition(': ')
                     if span:
                         timeline.append([float(span.split('-')[0]), ids(pairs(labels))])
-            rows.append([rel, led.get('pack') or rel.split('/')[0], led.get('bucket') or '',
+            rows.append([rel, led.get('pack') or (rel.split('/')[0] if '/' in rel else self.root.name), led.get('bucket') or '',
                          float(led.get('duration_seconds') or 0) or None,
                          float(tag['speech']) if tag else None, float(tag['music']) if tag else None,
                          ids(pairs(tag['top_labels'])) if tag else [], timeline,
@@ -110,25 +108,57 @@ class Library:
             raise ValueError('That file has no fingerprint yet')
         return {'scores': [round(float(s), 4) for s in m @ m[like]]}
 
-    def search(self, query):
-        """A description: audio, name and label sources fused (audio_search.py). Rebuilt when the tags change."""
-        sys.path.insert(0, str(HERE))
-        from audio_search import Index  # first call loads CLAP and embeds new names
+    def index(self):
+        """Cache the same search index used by the command-line tools."""
+        from audio_search import Index
         stamp = self.tags.stat().st_mtime_ns
         with self.lock:
-            # A running tagging pass rewrites the CSV constantly: rebuild at most every 10 minutes.
             stale = getattr(self, '_index_stamp', None) != stamp and time.time() - getattr(self, '_index_built', 0) > 600
             if getattr(self, '_index', None) is None or stale:
                 self._index, self._index_stamp, self._index_built = Index(self.root), stamp, time.time()
-            index = self._index
-        results, wanted = index.find(query, top=1000)
+            return self._index
+
+    def ranked_payload(self, results):
+        index = self.index()
+        rows = dict(zip(index.paths, index.rows))
         scores = [None] * len(self.matrix())
-        evidence = {}
-        for r in results:
-            if r['row'] < len(scores):
-                scores[r['row']] = r['score']
-                evidence[r['row']] = r['evidence']
-        return {'scores': scores, 'evidence': evidence, 'labels': list(wanted)}
+        for result in results:
+            row = int(rows[result['path']])
+            if 0 <= row < len(scores):
+                scores[row] = result['score']
+        return {'scores': scores, 'results': results}
+
+    def search(self, query):
+        """Description search, with audio, name and label evidence kept separate."""
+        results, wanted = self.index().find(query, top=1000)
+        data = self.ranked_payload(results)
+        data.update(evidence={r['row']: r['evidence'] for r in results}, labels=list(wanted))
+        return data
+
+    def more_like(self, path=None, avoid=''):
+        """Learn from saved judgements, using the CLI's example ranking unchanged."""
+        from audio_search import like
+        index = self.index()
+        verdicts = self.verdicts()
+        rejected = [p for p, v in verdicts.items() if v.get('verdict') == 'reject' and p in index.paths]
+        if path is not None:
+            self.file(path)
+            if path not in index.paths:
+                raise ValueError('That file has no fingerprint yet')
+            approved = [path]
+        else:
+            approved = [p for p, v in verdicts.items() if v.get('verdict') == 'like' and p in index.paths]
+        if not approved:
+            raise ValueError('Like a tagged sound first, then try More like my approved')
+        if avoid:
+            try:
+                re.compile(avoid)
+            except re.error as exc:
+                raise ValueError(f'Invalid avoid expression: {exc}') from exc
+        results = like(index, approved, rejected, avoid=avoid or None, top=1000, exact=True)
+        data = self.ranked_payload(results)
+        data.update(approved=approved, rejected=rejected)
+        return data
 
     def verdicts(self):
         try:
@@ -183,6 +213,10 @@ def handler(lib):
                     self.send_json(lib.payload())
                 elif url.path == '/api/search':
                     self.send_json(lib.search(q['q']))
+                elif url.path == '/api/approved':
+                    self.send_json(lib.more_like(avoid=q.get('avoid', '')))
+                elif url.path == '/api/like':
+                    self.send_json(lib.more_like(path=q['p'], avoid=q.get('avoid', '')))
                 elif url.path == '/api/similar':
                     self.send_json(lib.similar(int(q['row'])))
                 elif url.path == '/audio':
@@ -191,6 +225,8 @@ def handler(lib):
                     self.send_json({'error': 'not found'}, 404)
             except (ConnectionError, BrokenPipeError):
                 pass  # the page dropped a stream when the user skipped ahead
+            except ValueError as exc:
+                self.send_json({'error': str(exc)}, 400)
             except FileNotFoundError as exc:
                 self.send_json({'error': f'missing: {exc}'}, 404)
             except Exception as exc:
@@ -203,10 +239,19 @@ def handler(lib):
                     lib.file(body['path'])  # only real library files get a verdict
                     self.send_json(lib.set_verdict(body['path'], body.get('verdict', ''), body.get('note', '')))
                 elif self.path == '/api/reveal':
-                    subprocess.Popen(['explorer', '/select,', str(lib.file(body['path']))])
+                    path = lib.file(body['path'])
+                    if os.name == 'nt':
+                        command = ['explorer', '/select,', str(path)]
+                    elif sys.platform == 'darwin':
+                        command = ['open', '-R', str(path)]
+                    else:
+                        command = ['xdg-open', str(path.parent)]
+                    subprocess.Popen(command)
                     self.send_json({'ok': True})
                 else:
                     self.send_json({'error': 'not found'}, 404)
+            except ValueError as exc:
+                self.send_json({'error': str(exc)}, 400)
             except FileNotFoundError as exc:
                 self.send_json({'error': f'missing: {exc}'}, 404)
             except Exception as exc:
@@ -262,14 +307,17 @@ def main():
             continue
     else:
         sys.exit(f'No free port from {a.port} to {a.port + 19}')
+    port = server.server_address[1]
     url = f'http://127.0.0.1:{port}/'
-    print(f'Sound browser on {url} for {lib.root} - Ctrl+C to stop')
+    print(f'Sound browser on {url} for {lib.root} - Ctrl+C to stop', flush=True)
     if not a.no_open:
         webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        server.server_close()
 
 
 if __name__ == '__main__':

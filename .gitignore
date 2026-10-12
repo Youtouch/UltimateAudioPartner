@@ -56,6 +56,7 @@ desktop.ini
 .vscode/
 .idea/
 library.txt
+tools/private_words.txt
 skills/audio-designer/mix/REPORT.md
 skills/audio-designer/render/demo/
 skills/audio-designer/render/REPORT.md

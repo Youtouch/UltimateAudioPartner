@@ -11,5 +11,13 @@ if not exist "%LIBRARY%\" (
     pause
     exit /b 1
 )
-> "%STORE%" echo %LIBRARY%
+for %%I in ("%LIBRARY%") do set "LIBRARY=%%~fI"
+rem Delayed expansion writes metacharacters such as & as folder text.
+setlocal EnableDelayedExpansion
+> "!STORE!" echo(!LIBRARY!
+if errorlevel 1 (
+    endlocal
+    exit /b 1
+)
+endlocal
 exit /b 0

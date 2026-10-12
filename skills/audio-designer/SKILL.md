@@ -30,11 +30,11 @@ For ambience and animal calls also read [sound-without-hearing.md](references/so
 
 ## Mix
 
-Read [mix-plan.md](references/mix-plan.md) before rendering anything with more than one layer. Write the cue sheet (layer, file, excerpt, cue time, gain, ducking) first, render, then meter **each stem after gain** and **each stretch of the export**. Levels set by an agent are starting points: name the ones the user must judge.
+Read [mix-plan.md](references/mix-plan.md) before rendering anything with more than one layer. Write the cue sheet (layer, file, excerpt, cue time, gain, ducking) first, render, then meter **each stem after gain** and **each stretch of the export**. Levels set by an agent are starting points: name the ones the user must judge. To use personal approved mixes, run `mix_check.py calibrate --stems DIR [DIR ...] --out levels.json`; both the stem checker and renderer accept `--levels levels.json`. Without it the existing starting levels and ducking stay unchanged.
 
 `mix/mix_check.py stems --voice V --music M [--bed B] [--sfx S ...] [--mix FINAL]` meters those stems against mix-plan.md (voice and master loudness; music, bed and call levels against the voice during speech, in LU, calibrated on the mixes the user approved; effects over words) and `report` prints the cue-sheet rows. Stems must be aligned at zero with gains baked in. Its speech windows come from an energy gate, not a voice detector, and a PASS is a measurement, not a listen.
 
-`render/render_mix.py render CUE.csv --out DIR` renders a cue sheet (layer, file, excerpt, cue in/out, gain, duck ratio, high/low-pass, fades; format in `render/README.md`) into aligned stems and a loudness-normalised `final.wav`, ducking with the approved shorts' settings, then runs the checker and writes `cue_report.md`. It exits non-zero on any FAIL. Render with it rather than hand-writing an ffmpeg graph.
+`render/render_mix.py render CUE.csv --out DIR` renders a cue sheet (layer, file, excerpt, cue in/out, gain, duck ratio, high/low-pass, fades; format in `render/README.md`) into aligned stems and a loudness-normalised `final.wav`, ducking with the approved shorts' settings, then runs the checker and writes `cue_report.md`. Music/bed cues can set `loop=yes` for crossfaded repetition; effects can set `align=peak` to place the loudest instant on the cue time. It exits non-zero on any FAIL. Render with it rather than hand-writing an ffmpeg graph.
 
 ## Hand off
 
@@ -42,7 +42,7 @@ Per sound: file, excerpt, role, the three kinds of evidence (labels with probabi
 
 ## The user's browser
 
-`python scripts/sound_browser.py --root <library>` opens a local page where the user browses the library by tag, kind, pack and length, searches by description, finds "more like this", and auditions with the arrow keys. Their likes, rejects and notes land in `AUDIO_VERDICTS.json` in the library root: **read it as judged evidence** before proposing a sound, and never re-propose a rejected file. To hand the user a shortlist, give paths they can paste into the name filter.
+`python scripts/sound_browser.py --root <library>` opens a local page where the user browses the library by tag, kind, pack and length, searches by description, finds "more like this", and auditions with the arrow keys. Their likes, rejects and notes land in `AUDIO_VERDICTS.json` in the library root: **read it as judged evidence** before proposing a sound, and never re-propose a rejected file. The browser’s **More like my approved** view ranks from saved likes and rejects; its optional Avoid field starts empty. Each file also has **More like this** alongside audio-only similarity. To hand the user a shortlist, give paths they can paste into the name filter.
 
 ## Tools
 
@@ -66,4 +66,4 @@ python scripts/audio_tag.py check
 
 **Judging a change to search or tagging.** `bench/` holds a reviewed-clip benchmark and `bench_eval.py`: run a method against it before and after, on the dev split while tuning and on test once. Until the clips are reviewed by ear it scores against file names (PROXY), which flatters name-based methods; say so with any number.
 
-Needs `torch`, `torchaudio` and `transformers`; the models (CED-base for AudioSet labels, LAION CLAP for search) download to the Hugging Face cache on first use. CED runs code from its model page, pinned to a reviewed revision; `AUDIO_TAGGER=ast` switches back to the older AST tagger. Every tags row records its `tagger`. `relabel` re-labels an existing tags file with the current tagger, keeping fingerprints; `reembed` silence-pads short files' fingerprints (a looped 0.4 s click reads as a rattle). GPU when present, CPU otherwise. The library pass resumes on unchanged size/mtime and skips unreadable files with a note.
+Needs `torch`, `torchaudio` and `transformers`; the models (CED-base for AudioSet labels, LAION CLAP for search) download to the Hugging Face cache on first use. CED runs code from its model page, pinned to a reviewed revision; `AUDIO_TAGGER=ast` switches back to the older AST tagger. Every tags row records its `tagger`. `relabel` re-labels an existing tags file with the current tagger, keeping fingerprints; `reembed` silence-pads short files' fingerprints (a looped 0.4 s click reads as a rattle). GPU when present, CPU otherwise. The library pass resumes on unchanged size/mtime, writes full-duration metadata to `AUDIO_LEDGER_files.csv` while retaining existing columns and rows, and ends with tagged/unchanged/skipped counts. `AUDIO_TAGS_skipped.csv` records unreadable files and reasons each run. Recognition uses the first 60 seconds; fingerprints the first 10. Readers without a ledger report that fallback durations describe only the tagged span.

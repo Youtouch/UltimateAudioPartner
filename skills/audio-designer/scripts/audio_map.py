@@ -30,13 +30,14 @@ def media_tool(name="ffmpeg"):
         if not target.is_file():
             raise FileNotFoundError(target)
         return str(target)
-    base = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages"
-    matches = sorted(base.glob(f"Gyan.FFmpeg*/*/bin/{name}.exe"))
-    if matches:
-        return str(matches[-1])
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        base = Path(os.environ["LOCALAPPDATA"]) / "Microsoft/WinGet/Packages"
+        matches = sorted(base.glob(f"Gyan.FFmpeg*/*/bin/{name}.exe"))
+        if matches:
+            return str(matches[-1])
     found = shutil.which(name)
     if not found:
-        raise FileNotFoundError(f"Set FFMPEG or install {name} in WinGet/PATH")
+        raise FileNotFoundError(f"Set FFMPEG to the ffmpeg executable or put {name} on PATH")
     return found
 
 

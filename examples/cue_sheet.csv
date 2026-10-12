@@ -1,0 +1,8 @@
+# Copy this file beside your sounds and replace the filenames and gains.
+# Times are seconds. Paths resolve beside this CSV. Blank cue_out uses the excerpt length.
+# These gains are starting points; render and inspect the measured report, then listen.
+layer,file,excerpt_start,excerpt_end,cue_in,cue_out,gain_db,duck_ratio,highpass_hz,lowpass_hz,fade_in,fade_out,loop,align
+voice,voice.wav,0,12,0,12,0,-,-,-,0.01,0.02,no,start
+music,music.wav,0,4,0,12,-18,3,-,12000,0.02,0.30,yes,start
+bed,rain.wav,0,5,0,12,-32,8,140,6000,0.02,0.30,yes,start
+sfx,click.wav,0,0.2,5,,-12,-,-,-,0.005,0.02,no,peak

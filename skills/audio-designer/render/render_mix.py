@@ -15,6 +15,8 @@ import re
 import subprocess
 import types
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mix"))
 import mix_check
 audio_map = mix_check.audio_map
@@ -36,6 +38,7 @@ MIX_START = {
     "lra_policy": "local loudnorm parameter, as in the existing video graphs; not a plan target",
 }
 SAMPLE_RATE = 48000
+LOOP_CROSSFADE_FRAMES = round(.02 * SAMPLE_RATE)
 LAYERS = ("voice", "music", "bed", "sfx")
 NUMBER = r"(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
 ALIASES = {
@@ -49,7 +52,7 @@ ALIASES = {
 COLUMNS = {
     "layer", "file", "excerpt_start", "excerpt_end", "excerpt", "cue_in", "cue_out",
     "cue", "gain_db", "duck_ratio", "highpass_hz", "lowpass_hz", "fade_in", "fade_out",
-    "fade", "duck_eq", "eq", "measured_after_gain", "listening",
+    "fade", "duck_eq", "eq", "measured_after_gain", "listening", "loop", "align",
 }
 
 
@@ -69,10 +72,18 @@ class Cue:
     lowpass_hz: float | None
     fade_in: int
     fade_out: int
+    loop: bool = False
+    align: str = "start"
+    peak_frame: int = 0
+
+    @property
+    def timeline_start_frame(self):
+        return self.in_frame - self.peak_frame
 
     @property
     def play_frames(self):
-        return min(self.end_frame - self.start_frame, self.out_frame - self.in_frame)
+        length = self.out_frame - self.timeline_start_frame
+        return length if self.loop else min(self.end_frame - self.start_frame, length)
 
 
 class CommandLog:
@@ -158,11 +169,25 @@ def source_info(path):
     return channels, round(duration * SAMPLE_RATE)
 
 
+def source_peak_frame(path, channels, start, end):
+    """First absolute sample peak in the selected excerpt, across both channels."""
+    result = audio_map.subprocess.run(
+        ffmpeg_base() + inputs([path])
+        + ["-map", "0:a:0", "-af",
+           f"aresample={SAMPLE_RATE},atrim=start_sample={start}:end_sample={end}",
+           "-f", "f32le", "-c:a", "pcm_f32le", "-ac", str(channels), "-"],
+        check=True, capture_output=True)
+    samples = np.frombuffer(result.stdout, dtype="<f4").reshape(-1, channels)
+    if not len(samples) or not np.all(np.isfinite(samples)):
+        raise ValueError("peak alignment needs a finite, nonempty decoded excerpt")
+    return int(np.argmax(np.max(np.abs(samples), axis=1)))
+
+
 def read_cues(path):
     path = Path(path).expanduser().resolve(strict=True)
     cache, cues = {}, []
     with path.open(encoding="utf-8-sig", newline="") as source:
-        reader = csv.DictReader(source)
+        reader = csv.DictReader(line for line in source if not line.lstrip().startswith("#"))
         if not reader.fieldnames:
             raise ValueError("CSV needs a header and at least one cue")
         names = [re.sub(r"[^a-z0-9]+", "_", x.strip().lower()).strip("_")
@@ -202,7 +227,16 @@ def read_cues(path):
                 cue_in, cue_out = numeric(row.get("cue_in", ""), 0), numeric(row.get("cue_out", ""))
                 if row.get("cue"):
                     cue_in, cue_out = pair(row["cue"])
-                cue_out = cue_in + end - start if cue_out is None else cue_out
+                loop = row.get("loop", "").lower()
+                if loop not in {"", "-", "yes", "no"}:
+                    raise ValueError("loop must be yes or no")
+                loop = loop == "yes"
+                if loop and layer not in {"music", "bed"}:
+                    raise ValueError("loop=yes applies only to music and bed")
+                align = row.get("align", "").lower()
+                align = "start" if align in {"", "-"} else align
+                if align not in {"start", "peak"} or (align == "peak" and layer != "sfx"):
+                    raise ValueError("align must be start, or peak for sfx")
                 gain_db = numeric(row.get("gain_db", ""), 0)
                 duck_ratio = ratio(row.get("duck_ratio", "-"))
                 hp, lp = numeric(row.get("highpass_hz", "")), numeric(row.get("lowpass_hz", ""))
@@ -234,13 +268,17 @@ def read_cues(path):
                     fade_in, fade_out = pair(row["fade"], separator=r"[/–-]")
                     if fade_out is None:
                         raise ValueError("fade in/out needs two seconds values")
-                if min(start, cue_in, fade_in, fade_out) < 0 or end <= start or cue_out <= cue_in:
+                if min(start, cue_in, fade_in, fade_out) < 0 or end <= start:
                     raise ValueError("times must be nonnegative; excerpt/cue ends must follow starts")
-                frames = [round(x * SAMPLE_RATE) for x in (start, end, cue_in, cue_out, fade_in, fade_out)]
-                a, b, ci, co, fi, fo = frames
-                if b > source_frames + 1 or b <= a or co <= ci:
+                a, b, ci, fi, fo = [round(x * SAMPLE_RATE) for x in (start, end, cue_in, fade_in, fade_out)]
+                if b > source_frames + 1 or b <= a:
                     raise ValueError("excerpt exceeds source or rounds to an empty cue")
-                if fi + fo > min(b - a, co - ci):
+                peak = source_peak_frame(file, channels, a, b) if align == "peak" else 0
+                co = ci + b - a - peak if cue_out is None else round(cue_out * SAMPLE_RATE)
+                if co <= ci:
+                    raise ValueError("cue end must follow cue time")
+                audible = co - ci + peak if loop else min(b - a, co - ci + peak)
+                if fi + fo > audible:
                     raise ValueError("fades together exceed the audible cue length")
                 if layer in {"voice", "sfx"} and duck_ratio is not None:
                     raise ValueError("duck_ratio applies only to music and bed")
@@ -249,7 +287,7 @@ def read_cues(path):
                 if hp is not None and lp is not None and hp >= lp:
                     raise ValueError("highpass must be below lowpass")
                 cues.append(Cue(line, layer, file, channels, a, b, ci, co, gain_db,
-                                duck_ratio, hp, lp, fi, fo))
+                                duck_ratio, hp, lp, fi, fo, loop, align, peak))
             except (ValueError, OSError, KeyError, StopIteration) as error:
                 raise ValueError(f"CSV row {line}: {error}") from error
     if not cues:
@@ -278,15 +316,37 @@ def wav_output(path):
             "-ac", "2", "-threads", "1", str(path)]
 
 
-def duck_graph(source, key, out, duck_ratio, layer, voice_lufs):
-    spec = DUCK[layer]
+def duck_graph(source, key, out, duck_ratio, layer, voice_lufs, ducking=None):
+    spec = (DUCK if ducking is None else ducking)[layer]
     threshold = min(1.0, 10 ** ((voice_lufs + spec["threshold_db_re_voice"]) / 20))
+    if threshold < 1 / 1024:
+        raise ValueError(f"{layer} ducking threshold falls below FFmpeg's minimum; "
+                         "raise threshold_db_re_voice or supply a louder voice stem")
     return (f"[{source}][{key}]sidechaincompress=threshold={threshold:.6g}:"
             f"ratio={duck_ratio}:attack={spec['attack_ms']}:"
             f"release={spec['release_ms']}[{out}]")
 
 
-def render_layer(layer, cues, frames, directory, log):
+def loop_graph(source, cue, index):
+    """Double crossfaded repetitions until the cue fits; never pad a short loop."""
+    length = cue.end_frame - cue.start_frame
+    if not cue.loop or length >= cue.play_frames:
+        return [], source
+    crossfade = min(LOOP_CROSSFADE_FRAMES, length // 2)
+    if not crossfade:
+        label = f"loop{index}_single"
+        return [f"[{source}]aloop=loop=-1:size={length}[{label}]"], label
+    graph, iteration = [], 0
+    while length < cue.play_frames:
+        left, right, label = (f"loop{index}_{iteration}_{part}" for part in ("a", "b", "out"))
+        graph.append(f"[{source}]asplit=2[{left}][{right}]")
+        graph.append(f"[{left}][{right}]acrossfade=ns={crossfade}:c1=tri:c2=tri[{label}]")
+        source, length = label, 2 * length - crossfade
+        iteration += 1
+    return graph, source
+
+
+def render_layer(layer, cues, frames, directory, log, ducking=None):
     chosen = [cue for cue in cues if cue.layer == layer]
     paths = [cue.file for cue in chosen]
     ducked = [i for i, cue in enumerate(chosen) if cue.duck_ratio is not None]
@@ -303,7 +363,15 @@ def render_layer(layer, cues, frames, directory, log):
     for i, cue in enumerate(chosen):
         filters = [f"aresample={SAMPLE_RATE}",
                    f"atrim=start_sample={cue.start_frame}:end_sample={cue.end_frame}",
-                   "asetpts=PTS-STARTPTS", f"atrim=end_sample={cue.play_frames}"]
+                   "asetpts=PTS-STARTPTS"]
+        source = f"{i}:a:0"
+        if cue.loop and cue.end_frame - cue.start_frame < cue.play_frames:
+            label = f"excerpt{i}"
+            graph.append(f"[{source}]" + ",".join(filters) + f"[{label}]")
+            loop_filters, source = loop_graph(label, cue, i)
+            graph.extend(loop_filters)
+            filters = []
+        filters.append(f"atrim=end_sample={cue.play_frames}")
         if cue.channels == 1:
             filters.append("pan=stereo|c0=c0|c1=c0")  # Preserve mono amplitude in each channel.
         filters += ["aformat=sample_fmts=fltp:channel_layouts=stereo",
@@ -316,12 +384,18 @@ def render_layer(layer, cues, frames, directory, log):
             filters.append(f"afade=t=in:ss=0:ns={cue.fade_in}")
         if cue.fade_out:
             filters.append(f"afade=t=out:ss={cue.play_frames - cue.fade_out}:ns={cue.fade_out}")
-        filters += [f"adelay={cue.in_frame}S:all=1", align_filter(frames)]
+        delay = cue.in_frame
+        if cue.peak_frame:
+            # An onset before zero is cropped, retaining the peak at its cue time.
+            delay = max(0, cue.timeline_start_frame)
+            if cue.timeline_start_frame < 0:
+                filters += [f"atrim=start_sample={-cue.timeline_start_frame}", "asetpts=PTS-STARTPTS"]
+        filters += [f"adelay={delay}S:all=1", align_filter(frames)]
         label = f"cue{i}"
-        graph.append(f"[{i}:a:0]" + ",".join(filters) + f"[{label}]")
+        graph.append(f"[{source}]" + ",".join(filters) + f"[{label}]")
         if cue.duck_ratio is not None:
             key, output = f"key{i}", f"duck{i}"
-            graph.append(duck_graph(label, key, output, cue.duck_ratio, layer, voice_lufs))
+            graph.append(duck_graph(label, key, output, cue.duck_ratio, layer, voice_lufs, ducking))
             label = output
         layers.append(f"[{label}]")
     if layers:
@@ -372,8 +446,11 @@ def render_final(directory, frames, log):
     return {"pass1": measured, "pass2": loudnorm_values(second.stderr)}
 
 
-def render_mix(cue_path, out):
+def render_mix(cue_path, out, levels=None):
     log = CommandLog()
+    policy = (mix_check.validate_levels(levels) if isinstance(levels, dict)
+              else mix_check.load_levels(levels) if levels is not None else None)
+    ducking = DUCK if policy is None else policy["ducking"]
     with record_shared_commands(log):
         cue_path, cues = read_cues(cue_path)
         directory = Path(out).expanduser()
@@ -387,7 +464,7 @@ def render_mix(cue_path, out):
         manifest = {
             "schema": 1, "cue_csv": str(cue_path), "sample_rate": SAMPLE_RATE,
             "channels": 2, "frames": frames, "duration_s": frames / SAMPLE_RATE,
-            "starting_values": MIX_START, "ducking": DUCK, "commands": log.commands,
+            "starting_values": MIX_START, "ducking": ducking, "commands": log.commands,
             "shared_dependencies": {
                 name: {"path": str(file), "sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
                 for name, file in (("mix_check", Path(mix_check.__file__)),
@@ -401,14 +478,16 @@ def render_mix(cue_path, out):
                       "Music/bed stems include ducking; final uses those exact stems.",
                       "No implicit looping, stretching, source normalisation or recognition."],
         }
+        if policy is not None:
+            manifest["levels"] = policy
         try:
             for layer in LAYERS:
-                render_layer(layer, cues, frames, directory, log)
+                render_layer(layer, cues, frames, directory, log, ducking)
             manifest["loudnorm"] = render_final(directory, frames, log)
             log.stage = "mix_check"
             result = mix_check.inspect_mix(directory / "voice.wav", directory / "music.wav",
                                            directory / "bed.wav", [directory / "sfx.wav"],
-                                           directory / "final.wav")
+                                           directory / "final.wav", levels=policy)
             manifest["mix_check"] = result
             manifest["exit_code"] = 2 if any(m["status"] == "FAIL" for m in result["metrics"]) else 0
             (directory / "cue_report.md").write_text(mix_check.markdown_report(result) + "\n",
@@ -430,13 +509,14 @@ def main(argv=None):
     render = commands.add_parser("render", help="render a local CSV, then run mix_check")
     render.add_argument("cue", type=Path)
     render.add_argument("--out", type=Path, required=True)
+    render.add_argument("--levels", type=Path, help="calibrated checker thresholds and ducking settings")
     commands.add_parser("check", help="synthetic integration checks with real renderer mutations")
     args = parser.parse_args(argv)
     try:
         if args.command == "check":
             import render_tests
             return render_tests.run(sys.modules[__name__])
-        result = render_mix(args.cue, args.out)
+        result = render_mix(args.cue, args.out, levels=args.levels)
         fails = sum(m["status"] == "FAIL" for m in result["mix_check"]["metrics"])
         print(f"Rendered {result['duration_s']:.3f} s; mix_check: {fails} FAIL; listening pending.")
         return result["exit_code"]

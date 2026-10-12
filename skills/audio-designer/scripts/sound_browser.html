@@ -98,6 +98,8 @@ kbd { background: var(--chip); border: 1px solid var(--line); border-radius: 4px
   <input id="q" class="field" type="search" placeholder="Filter by name or folder" aria-label="Filter by name or folder">
   <input id="describe" class="field" type="search" placeholder="Describe a sound: soft wooden click, birds at dawn, calm piano…" aria-label="Describe a sound">
   <button id="go" class="btn primary">Find</button>
+  <input id="avoid" class="field" type="search" placeholder="Avoid words or labels (optional)" aria-label="Avoid words or labels">
+  <button id="approved" class="btn">More like my approved</button>
   <span id="status">Loading…</span>
   <button id="reload" class="btn" title="Re-read the tag files (the tagging pass may still be adding rows)">Reload</button>
 </header>
@@ -295,8 +297,9 @@ function rowHtml(i) {
       <span class="dur">${fmt(r[3])}</span>
       <button class="icon${v === 'like' ? ' on-like' : ''}" data-act="like" aria-label="Like" title="Like (L)">${v === 'like' ? ICON.likeOn : ICON.like}</button>
       <button class="icon${v === 'reject' ? ' on-reject' : ''}" data-act="reject" aria-label="Reject" title="Reject (X)">${ICON.reject}</button>
-      <button class="icon" data-act="similar" aria-label="More like this" title="More like this (M)"${r[8] < 0 ? ' disabled' : ''}>${ICON.similar}</button>
-      <button class="icon" data-act="reveal" aria-label="Show in Explorer" title="Show in Explorer">${ICON.folder}</button>
+      <button class="icon" data-act="similar" aria-label="Similar audio" title="Similar audio (M)"${r[8] < 0 ? ' disabled' : ''}>${ICON.similar}</button>
+      <button class="btn" data-act="morelike" aria-label="More like this using my verdicts" title="Find related sounds, using rejected sounds and Avoid"${r[8] < 0 ? ' disabled' : ''}>More like this</button>
+      <button class="icon" data-act="reveal" aria-label="Show in folder" title="Show in folder">${ICON.folder}</button>
       <button class="icon" data-act="copy" aria-label="Copy path" title="Copy full path (C)">${ICON.copy}</button></div>
     ${tags ? `<div class="tags">${tags}</div>` : r[4] == null ? '<div class="tags sub">Not tagged yet</div>' : ''}
     ${strip ? `<div class="strip">${strip}</div>` : ''}
@@ -336,12 +339,14 @@ async function verdict(i, v) {
   verdicts = await res.json(); redraw(i);
   toast(same ? 'Cleared' : v === 'like' ? 'Liked - saved to AUDIO_VERDICTS.json' : 'Rejected');
 }
+$('#approved').onclick = () => match('/api/approved?avoid=' + encodeURIComponent($('#avoid').value), 'like my approved');
 async function match(url, label) {
   $('#status').textContent = 'Matching… (the first search loads the models and indexes the names: up to a minute, longer while a tagging pass is running)';
   const res = await fetch(url), data = await res.json();
   if (!res.ok) { $('#status').textContent = data.error; return; }
   scores = data.scores; evidence = data.evidence || null; scoreLabel = label + (data.labels?.length ? ` · labels checked: ${data.labels.slice(0, 3).join(', ')}` : ''); $('#sort').value = 'score';
   if (state.tags.length || $('#q').value) toast('Tag and name filters cleared for the match; kind, pack and length still apply');
+  if (url.startsWith('/api/approved') || url.startsWith('/api/like?')) $('#liked').checked = false;
   state.tags = []; $('#q').value = '';
   $('#status').textContent = `${D.tagged.toLocaleString()} of ${D.total.toLocaleString()} files tagged`;
   apply(); $('main').scrollTop = 0;
@@ -356,6 +361,7 @@ $('#list').addEventListener('click', e => {
   if (vtag) { if (!state.vtags.includes(vtag.dataset.vtag)) state.vtags.push(vtag.dataset.vtag); apply(); return; }
   if (seek) return play(i, +seek.dataset.seek);
   if (act === 'like' || act === 'reject') return verdict(i, act);
+  if (act === 'morelike') return match('/api/like?p=' + encodeURIComponent(D.rows[i][0]) + '&avoid=' + encodeURIComponent($('#avoid').value), 'more like ' + D.rows[i][0].split('/').pop());
   if (act === 'similar') return match('/api/similar?row=' + D.rows[i][8], 'like ' + D.rows[i][0].split('/').pop());
   if (act === 'reveal') return fetch('/api/reveal', { method: 'POST', body: JSON.stringify({ path: D.rows[i][0] }) });
   if (act === 'copy') return copy(i);

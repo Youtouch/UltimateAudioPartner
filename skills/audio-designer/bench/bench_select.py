@@ -7,11 +7,14 @@ import io
 import json
 import random
 import re
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / 'scripts'))
+from library_metadata import read_metadata, tag_metadata, relative_path
 ROOT = Path(os.environ.get('AUDIO_LIBRARY', '.'))  # the library folder holding the ledger, tags and vectors
 FIELDS = ['relative_path','group_id','split','stratum','duration_seconds','sources',
           'foreground_or_background','uncertain','notes','reviewed_by']
@@ -39,7 +42,8 @@ def check():
     assert all(len(s) == 1 for s in by_group.values())
     assert all(not x[k] for x in chosen for k in FIELDS[5:])
     assert all(0 <= float(x['duration_seconds']) < 1 for x in chosen if x['stratum']=='short_one_shots')
-    print('PASS bench_select check: variants, duplicate-last, append tail, pack cap, split isolation, blank truth')
+    ledger_fallback_check()
+    print('PASS bench_select check: variants, duplicate-last, append tail, pack cap, split isolation, blank truth, ledger fallback')
 
 
 # Patterns only nominate candidates; they are never written into truth columns.
@@ -116,7 +120,16 @@ def candidate(row, stratum, role):
     if stratum == 'quiet_silence' and role == 'positive_candidate':
         return bool(re.search(pattern,text) or float(row.get('silence') or 0) >= .5)
     if stratum == 'calm_instrumental' and role == 'positive_candidate':
-        return row.get('bucket') == 'music' and bool(re.search(pattern,text))
+        bucket = row.get('bucket')
+        # A fresh metadata ledger has no editorial bucket. Music scores nominate candidates only.
+        if bucket:
+            musical = bucket == 'music'
+        else:
+            try:
+                musical = float(row.get('music') or parse_labels(row.get('top_labels', '')).get('Music', 0)) >= .5
+            except (TypeError, ValueError):
+                musical = False
+        return musical and bool(re.search(pattern,text))
     return bool(re.search(pattern,text))
 
 
@@ -176,7 +189,17 @@ def build(args):
     tags, metadata = latest_csv_bytes(raw)
     vector_bytes = args.vectors.stat().st_size
     vector_rows = vector_bytes//2048
-    ledger = read_csv(args.ledger)
+    if args.ledger is None:
+        ledger_path = args.tags.parent / 'AUDIO_LEDGER_files.csv'
+        ledger = list(read_metadata(args.tags.parent, tags).values())
+    else:
+        # An explicit custom ledger keeps its own row subset and errors if that file is missing.
+        ledger_path = args.ledger
+        fallback = tag_metadata(tags)
+        ledger = []
+        for row in read_csv(ledger_path):
+            rel = relative_path(row['relative_path'])
+            ledger.append({**fallback.get(rel, {}), **row, 'relative_path': rel})
     eligible, rejected = [], Counter()
     for r in ledger:
         t = tags.get(r['relative_path'])
@@ -189,14 +212,17 @@ def build(args):
     chosen,audit,stats = select(eligible,args.seed,args.per_stratum,args.pack_cap)
     chosen.sort(key=lambda r:(r['split'],r['stratum'],r['relative_path']))
     write_csv(HERE/'benchmark.csv',chosen,FIELDS)
-    write_csv(HERE/'selection_audit.csv',audit)
-    write_csv(HERE/'snapshot.csv',eligible)
+    write_csv(HERE/'selection_audit.csv',audit,
+              ['relative_path','stratum','candidate_role','pack','variant_family','top_labels','evidence'])
+    snapshot_fields = list(eligible[0]) if eligible else list(dict.fromkeys(
+        ['relative_path','pack','duration_seconds'] + list(next(iter(tags.values()), {}))))
+    write_csv(HERE/'snapshot.csv',eligible,snapshot_fields)
     spans = [dict(relative_path=r['relative_path'],start_seconds=0,
                   end_seconds=min(10.,float(r['duration_seconds'])),
                   scope='fixed opening excerpt; whole file NOT reviewed') for r in chosen]
-    write_csv(HERE/'review_spans.csv',spans)
+    write_csv(HERE/'review_spans.csv',spans,['relative_path','start_seconds','end_seconds','scope'])
     metadata.update(created_utc=datetime.now(timezone.utc).isoformat(),seed=args.seed,
-                    ledger=str(args.ledger),tags=str(args.tags),vectors=str(args.vectors),
+                    ledger=str(ledger_path),ledger_missing=not ledger_path.exists(),tags=str(args.tags),vectors=str(args.vectors),
                     vector_bytes=vector_bytes,complete_vector_rows=vector_rows,
                     ignored_vector_tail_bytes=vector_bytes%2048,ledger_rows=len(ledger),
                     tagged_unique_paths=len(tags),eligible_rows=len(eligible),excluded=dict(rejected),
@@ -206,13 +232,79 @@ def build(args):
     print(json.dumps({k:metadata[k] for k in ['selected','eligible_rows','counts','selection']},indent=2))
 
 
+
+def ledger_fallback_check():
+    """Exercise complete pilot builds without models, audio, or a pre-existing metadata ledger."""
+    import contextlib
+    import tempfile
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory(prefix='uap-benchmark-test-') as temporary:
+        root = Path(temporary)
+        tags = root / 'AUDIO_TAGS.csv'
+        tag_rows = [
+            dict(relative_path='Music Pack/calm piano.wav', seconds_tagged='60', clap_row='0',
+                 music='.9', silence='0', top_labels='Music 0.9'),
+            dict(relative_path='Nature Pack/rain.wav', seconds_tagged='5', clap_row='1',
+                 music='0', silence='0', top_labels='Rain 0.9'),
+        ]
+        write_csv(tags, tag_rows)
+        vectors = root / 'AUDIO_TAGS_clap.f32'
+        vectors.write_bytes(bytes(2 * 2048))
+        args = SimpleNamespace(tags=tags, vectors=vectors, ledger=None,
+                               seed=41, per_stratum=3, pack_cap=2)
+        def pilot(name):
+            out = root / name
+            out.mkdir()
+            with patch.dict(globals(), HERE=out), contextlib.redirect_stdout(io.StringIO()):
+                build(args)
+            return read_csv(out / 'snapshot.csv'), json.loads((out / 'selection.json').read_text(encoding='utf-8'))
+        from library_metadata import _missing_ledger_noted
+        _missing_ledger_noted.discard(str(root.resolve()))
+        notes = io.StringIO()
+        with contextlib.redirect_stderr(notes):
+            rows, meta = pilot('without-ledger')
+            pilot('without-ledger-again')
+        assert notes.getvalue().count('NOTE') == 1 and 'AUDIO_LEDGER_files.csv' in notes.getvalue(), notes.getvalue()
+        by_path = {row['relative_path']: row for row in rows}
+        assert len(rows) == 2 and by_path['Music Pack/calm piano.wav']['pack'] == 'Music Pack', rows
+        assert float(by_path['Music Pack/calm piano.wav']['duration_seconds']) == 60, rows
+        assert meta['ledger_missing'] and meta['selection']['eligible_candidates']['calm_instrumental / positive_candidate'] == 1, meta
+        fresh = root / 'AUDIO_LEDGER_files.csv'
+        fields = ['relative_path','pack','duration_seconds','sample_rate','channels','size_bytes','mtime_ns']
+        write_csv(fresh, [dict(relative_path=row['relative_path'],pack=row['relative_path'].split('/')[0],
+                              duration_seconds=90 if i == 0 else 5,sample_rate=48000,channels=1,
+                              size_bytes=100,mtime_ns=1) for i,row in enumerate(tag_rows)],fields)
+        rows, meta = pilot('fresh-ledger')
+        assert float(next(row for row in rows if row['relative_path'].startswith('Music Pack'))['duration_seconds']) == 90, rows
+        assert not meta['ledger_missing'] and meta['selection']['eligible_candidates']['calm_instrumental / positive_candidate'] == 1, meta
+        assert not candidate(dict(by_path['Music Pack/calm piano.wav'], bucket='sfx'), 'calm_instrumental', 'positive_candidate')
+        custom = root / 'custom.csv'
+        write_csv(custom, [dict(relative_path='Nature Pack/rain.wav',pack='Custom Pack',duration_seconds=12)])
+        args.ledger = custom
+        rows, _ = pilot('custom-ledger')
+        assert len(rows) == 1 and rows[0]['pack'] == 'Custom Pack' and float(rows[0]['duration_seconds']) == 12, rows
+        args.ledger = root / 'missing-custom.csv'
+        try:
+            pilot('missing-custom-ledger')
+        except FileNotFoundError:
+            pass
+        else:
+            raise AssertionError('An explicit missing custom ledger must not silently select a different library')
+        args.ledger = custom
+        vectors.write_bytes(b'')
+        rows, meta = pilot('no-valid-vectors')
+        assert rows == [] and meta['selected'] == 0 and meta['excluded']['invalid_vector_or_duration'] == 1, (rows, meta)
+    print('PASS bench_select ledger builds: note once, tag fallback, seven-column music nomination, custom subset, empty input')
+
+
 def main():
     global HERE
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest='cmd',required=True)
     sub.add_parser('check')
     b = sub.add_parser('build')
-    b.add_argument('--ledger',type=Path,default=ROOT/'AUDIO_LEDGER_files.csv')
+    b.add_argument('--ledger',type=Path,help='custom ledger; default beside --tags, with tag fallback if missing')
     b.add_argument('--tags',type=Path,default=ROOT/'AUDIO_TAGS.csv')
     b.add_argument('--vectors',type=Path,default=ROOT/'AUDIO_TAGS_clap.f32')
     b.add_argument('--seed',type=int,default=20261010)

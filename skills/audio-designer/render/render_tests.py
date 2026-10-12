@@ -1,5 +1,6 @@
 """Synthetic integration and in-memory renderer mutation checks; no library audio."""
 import csv
+import copy
 from contextlib import redirect_stdout
 import io
 import json
@@ -114,13 +115,143 @@ def mutant(renderer, old, new, name):
     return module
 
 
+def cue_features(renderer, root):
+    """Assert actual stem samples for short loops and source-peak placement."""
+    sr = renderer.SAMPLE_RATE
+    ramp = np.linspace(.05, .2, round(.23 * sr))
+    renderer.mix_check.write_test_wav(root / "short.wav", ramp)
+    spot = np.zeros((sr, 2))
+    spot[:, 0] = .01 * np.sin(2 * np.pi * 211 * np.arange(sr) / sr)
+    spot[round(.6 * sr), 1] = -.7  # Largest absolute peak is negative and in the right channel.
+    renderer.mix_check.write_test_wav(root / "spot.wav", spot)
+    path = root / "features.csv"
+    path.write_text(
+        "# Commented cue-sheet template.\n"
+        "layer,file,excerpt_start,excerpt_end,cue_in,cue_out,fade_in,fade_out,loop,align\n"
+        "music,short.wav,0,.23,0,2,0,0,yes,start\n"
+        "# A second looping layer and effects with and without a pre-zero onset.\n"
+        "bed,short.wav,0,.23,0,2,0,0,yes,\n"
+        "sfx,spot.wav,.2,.9,.75,,0,0,no,peak\n",
+        encoding="utf-8")
+
+    def render(module, csv_path, name, layers):
+        _, cues = module.read_cues(csv_path)
+        out = root / name
+        out.mkdir()
+        for layer in layers:
+            module.render_layer(layer, cues, max(c.out_frame for c in cues), out, module.CommandLog())
+        return out, cues
+
+    def loop_samples(module, out):
+        for layer in ("music", "bed"):
+            got = read(module, out, layer)[:, 0]
+            require(len(got) == 2 * sr, "loop changed cue length")
+            require(np.min(got[round(.25 * sr):]) > .04,
+                    "short source went silent before the looping cue ended")
+            require(np.max(np.abs(np.diff(got))) < .001,
+                    "loop seam was cut without its short crossfade")
+
+    out, cues = render(renderer, path, "features", ("music", "bed", "sfx"))
+    loop_samples(renderer, out)
+    # The exact source peak, not the excerpt start or a positive-only/mono peak, lands on the cue.
+    got = read(renderer, out, "sfx")
+    require(int(np.argmax(np.max(np.abs(got), axis=1))) == round(.75 * sr),
+            "sfx peak missed its cue time")
+    require(cues[-1].out_frame == round(1.05 * sr),
+            "omitted peak-aligned cue_out did not preserve the shifted excerpt end")
+
+    no_loop = mutant(renderer, 'if not cue.loop or length >= cue.play_frames:',
+                     'if True:', 'no_loop')
+    broken, _ = render(no_loop, path, "features-no-loop", ("music", "bed"))
+    try:
+        loop_samples(renderer, broken)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("loop regression accepted silence after a short source")
+    no_crossfade = mutant(renderer,
+                         'f"[{left}][{right}]acrossfade=ns={crossfade}:c1=tri:c2=tri[{label}]"',
+                         'f"[{left}][{right}]concat=n=2:v=0:a=1[{label}]"', 'no_crossfade')
+    broken, _ = render(no_crossfade, path, "features-cut-loop", ("music", "bed"))
+    try:
+        loop_samples(renderer, broken)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("loop regression accepted an abrupt seam")
+
+    no_peak = mutant(renderer,
+                     'peak = source_peak_frame(file, channels, a, b) if align == "peak" else 0',
+                     'peak = 0', 'no_peak')
+    broken, _ = render(no_peak, path, "features-no-peak", ("sfx",))
+    broken_peak = int(np.argmax(np.max(np.abs(read(renderer, broken, "sfx")), axis=1)))
+    require(broken_peak != round(.75 * sr), "peak regression accepted start alignment")
+
+    zero = root / "peak-zero.csv"
+    zero.write_text(path.read_text(encoding="utf-8").replace(".9,.75,,", ".9,0,,"), encoding="utf-8")
+    out, _ = render(renderer, zero, "features-zero", ("sfx",))
+    got = read(renderer, out, "sfx")
+    require(int(np.argmax(np.max(np.abs(got), axis=1))) == 0,
+            "a pre-zero onset moved the peak away from time zero")
+    require(abs(float(got[0, 1]) + .7) < 1e-6 and np.max(np.abs(got[round(.3 * sr):]), initial=0) == 0,
+            "clipping a pre-zero onset changed peak amplitude or the tail end")
+
+    default = root / "default.csv"
+    default.write_text("layer,file,cue_in,cue_out,fade_in,fade_out\nmusic,short.wav,0,2,0,0\n", encoding="utf-8")
+    out, _ = render(renderer, default, "features-default", ("music",))
+    require(np.max(np.abs(read(renderer, out, "music")[sr:]), initial=0) == 0,
+            "omitting loop changed the original silence-padding behavior")
+    for row in ("voice,short.wav,yes,start", "sfx,spot.wav,yes,peak",
+                "music,short.wav,no,peak", "bed,short.wav,maybe,start", "sfx,spot.wav,no,centre"):
+        invalid = root / "invalid.csv"
+        invalid.write_text("layer,file,loop,align\n" + row + "\n", encoding="utf-8")
+        try:
+            renderer.read_cues(invalid)
+        except ValueError:
+            continue
+        raise AssertionError("invalid loop/align combination was accepted: " + row)
+
+
+def calibrated_levels(renderer, root, cue, base, result):
+    require(renderer.DUCK == renderer.mix_check.DEFAULT_DUCK, "renderer/checker duck defaults differ")
+    policy = {"schema": 1, "thresholds": copy.deepcopy(renderer.mix_check.THRESHOLDS),
+              "ducking": copy.deepcopy(renderer.DUCK)}
+    policy["thresholds"]["music_gap"].update(min=60., warn_min=58., max=80.)
+    policy["ducking"]["music"]["threshold_db_re_voice"] -= 18.
+    path = root / "levels.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    out = root / "strict"
+    with redirect_stdout(io.StringIO()):
+        status = renderer.main(["render", str(cue), "--out", str(out), "--levels", str(path)])
+    require(status == 2, "renderer ignored calibrated checker thresholds")
+    manifest = json.loads((out / "render.json").read_text(encoding="utf-8"))
+    require(metric(manifest["mix_check"], "music.gap_on")["status"] == "FAIL",
+            "strict calibrated music gap was not applied")
+    require(manifest["levels"]["thresholds"]["music_gap"]["min"] == 60.,
+            "render manifest omitted the effective calibrated policy")
+    require("[FAIL]" in (out / "cue_report.md").read_text(encoding="utf-8"),
+            "calibrated FAIL was missing from the report")
+
+    # The file's lower threshold must reduce real samples through the render CLI.
+    normal = read(renderer, base, "music")[2 * 48000:3 * 48000]
+    changed = read(renderer, out, "music")[2 * 48000:3 * 48000]
+    ratio = np.sqrt(np.mean(changed.astype(float) ** 2)) / np.sqrt(np.mean(normal.astype(float) ** 2))
+    require(ratio < .4, f"custom ducking did not affect rendered music: amplitude ratio {ratio:.3f}")
+    try:
+        renderer.duck_graph("music", "voice", "out", 3, "music", -80, policy["ducking"])
+    except ValueError as error:
+        require("threshold" in str(error), "extreme ducking setting lacked an actionable error")
+    else:
+        raise AssertionError("extreme ducking setting reached FFmpeg outside its accepted threshold range")
+
+
 def run(renderer):
     cases = [
         ("ducking", ducking,
-         'graph.append(duck_graph(label, key, output, cue.duck_ratio, layer, voice_lufs))',
+         'graph.append(duck_graph(label, key, output, cue.duck_ratio, layer, voice_lufs, ducking))',
          'graph.append(f"[{key}]anullsink;[{label}]anull[{output}]")'),
         ("cue at 5 s ±1 sample frame", timing,
-         'f"adelay={cue.in_frame}S:all=1"', 'f"adelay=0S:all=1"'),
+         'f"adelay={delay}S:all=1"', 'f"adelay=0S:all=1"'),
         ("excerpt 2-4 s correlation", excerpt,
          'f"atrim=start_sample={cue.start_frame}:end_sample={cue.end_frame}"',
          'f"atrim=start_sample=0:end_sample={cue.end_frame - cue.start_frame}"'),
@@ -132,8 +263,7 @@ def run(renderer):
          'return f"apad=whole_len={frames},atrim=end_sample={frames}"', 'return "anull"'),
     ]
     failures = []
-    # Every generated byte is inside render/; the directory is removed on exit.
-    with tempfile.TemporaryDirectory(prefix=".check-", dir=Path(__file__).parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix="render-check-") as temporary:
         root = Path(temporary)
         cue, expected = fixtures(renderer, root)
         base = root / "good"
@@ -175,5 +305,15 @@ def run(renderer):
         except Exception as error:
             failures.append("integration")
             print("FAIL integration: " + str(error), flush=True)
-    print(f"{7 - len(failures)}/7 checks passed; 6 renderer mutations exercised; listening pending.")
+        for name, check in (("loop/crossfade/peak/defaults/input validation",
+                             lambda: cue_features(renderer, root)),
+                            ("calibrated checker and ducking",
+                             lambda: calibrated_levels(renderer, root, cue, base, result))):
+            try:
+                check()
+                print("PASS " + name, flush=True)
+            except Exception as error:
+                failures.append(name)
+                print("FAIL " + name + ": " + str(error), flush=True)
+    print(f"{9 - len(failures)}/9 checks passed; 9 renderer mutations exercised; listening pending.")
     return 1 if failures else 0

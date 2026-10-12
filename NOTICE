@@ -4,7 +4,9 @@ Copyright 2026 Alexandre Guillout
 This product includes software developed by Alexandre Guillout, licensed under the Apache License, Version 2.0.
 
 Models downloaded at runtime (not distributed with this repository):
-- mispeech/ced-base (CED, Apache-2.0), the default tagger
-- MIT/ast-finetuned-audioset-10-10-0.4593 (Audio Spectrogram Transformer, BSD-3-Clause), optional
-- laion/clap-htsat-unfused (LAION CLAP, Apache-2.0)
+- mispeech/ced-base (CED, Apache-2.0), the default tagger; approximately 343 MB of weights
+- MIT/ast-finetuned-audioset-10-10-0.4593 (Audio Spectrogram Transformer, BSD-3-Clause), optional; approximately 346 MB of weights
+- laion/clap-htsat-unfused (LAION CLAP, Apache-2.0); approximately 615 MB of weights
 Each is fetched from Hugging Face under its own licence on first use.
+Sizes are rounded decimal MB from the locally cached checkpoints; configuration,
+tokenizer files and Python dependencies are additional. CED plus CLAP need roughly 1 GB.

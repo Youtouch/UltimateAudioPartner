@@ -5,6 +5,7 @@ network calls, recognition models, GPU or playback. Run from the skill folder:
 
 ~~~powershell
 python -B render/render_mix.py render "episode/cues.csv" --out "episode/rendered"
+python -B render/render_mix.py render "episode/cues.csv" --out "episode/rendered-custom" --levels levels.json
 python -B render/render_mix.py check
 ~~~
 
@@ -15,7 +16,8 @@ shell if needed. No personal executable/library paths are built into the rendere
 The output must be a new or empty directory. Existing files are never overwritten.
 Inputs are read only; relative file paths resolve beside the CSV, not beside the
 script. Local Windows paths with spaces, commas and non-ASCII names work; quote
-CSV cells containing commas. CSV is UTF-8, with an optional BOM. The shared
+CSV cells containing commas. CSV is UTF-8, with an optional BOM. Lines beginning
+with `#` (optionally after whitespace) are comments, including before the header. The shared
 audio_map.probe helper explicitly decodes ffprobe output as UTF-8.
 
 ## CSV
@@ -25,11 +27,11 @@ are seconds, decimal points are dots, and all timing rounds to 48 kHz sample
 frames (one frame = one sample per channel). Here is one complete example:
 
 ~~~csv
-layer,file,excerpt_start,excerpt_end,cue_in,cue_out,gain_db,duck_ratio,highpass_hz,lowpass_hz,fade_in,fade_out
-voice,voice.wav,0,10,0,12,0,-,-,-,0.01,0.02
-music,music.wav,2,14,0,12,-18,6:1,-,12000,0.02,0.30
-bed,ambience.wav,0,12,0,12,-32,8:1,140,6000,0.02,0.30
-sfx,"UI/click, café.wav",0,0.2,4.5,4.7,-12,-,-,-,0.005,0.02
+layer,file,excerpt_start,excerpt_end,cue_in,cue_out,gain_db,duck_ratio,highpass_hz,lowpass_hz,fade_in,fade_out,loop,align
+voice,voice.wav,0,10,0,12,0,-,-,-,0.01,0.02,no,start
+music,music.wav,2,6,0,12,-18,3:1,-,12000,0.02,0.30,yes,start
+bed,ambience.wav,0,4,0,12,-32,8:1,140,6000,0.02,0.30,yes,start
+sfx,"UI/click, café.wav",0,0.2,4.5,,-12,-,-,-,0.005,0.02,no,peak
 ~~~
 
 These gains are examples, not a promise that arbitrary sources pass the checker.
@@ -40,14 +42,22 @@ These gains are examples, not a promise that arbitrary sources pass the checker.
 | file | Required local audio file. First audio stream, mono or stereo. Mono is duplicated at unchanged amplitude into stereo. |
 | excerpt_start | Source position to begin, after resampling to 48 kHz; default 0. |
 | excerpt_end | Exclusive source end; default source duration. Must follow start and fit the source. |
-| cue_in | Timeline position for the excerpt's first sample; default 0. This is not automatic loudest-instant alignment. |
-| cue_out | Exclusive cue end; default cue_in plus excerpt length. Earlier ends trim audio; later ends add silence. No looping or time stretching. |
+| cue_in | Timeline position for the excerpt's first sample; default 0. With sfx align=peak, this is the peak's timeline position. |
+| cue_out | Exclusive timeline end. Default is the placed excerpt end, accounting for peak alignment. Earlier ends trim audio; later ends add silence unless loop=yes. |
 | gain_db | Fixed gain before the sum; default 0. Negative values attenuate. Never auto-adjusts a source to pass. |
 | duck_ratio | Music/bed only: 1 through 20, optionally N:1; blank or '-' disables sidechain for that row. Typical plan starts are music 4:1–8:1, bed 8:1. |
 | highpass_hz | Optional two-pole FFmpeg high-pass; blank/'-' disables. 140 is a bed starting point. |
 | lowpass_hz | Optional two-pole FFmpeg low-pass; blank/'-' disables. Cutoffs must be >0, <24000, and HP below LP. |
 | fade_in | Linear fade duration at the excerpt's audible start; default 0.01. Explicit 0 disables. |
 | fade_out | Linear fade duration at the audible end after trimming; default 0.02. Explicit 0 disables. Fades together must fit the audible cue. |
+| loop | Music/bed only: yes repeats a short excerpt through cue_out, with a linear crossfade of up to 20 ms (at most half the excerpt) at each join. No, blank or omitted retains silence padding after the source ends. No time stretching. |
+| align | start (default), or peak for sfx. Peak places the first largest absolute sample across either source channel, within the selected excerpt, at cue_in. It is measured before gain/EQ/fades. |
+
+For a peak-aligned effect whose onset would fall before time zero, the leading
+samples are cropped while the peak stays on cue_in. Omitting cue_out keeps the
+remaining excerpt tail; an explicit cue_out trims or pads the placed effect.
+Fades remain at the original excerpt's edges before cropping. EQ and fades can
+change which sample is loudest after processing; inspect the rendered effect.
 
 The plan's combined table fields also work as CSV headers: Layer, File, Excerpt,
 Cue in/out, Gain, Duck / EQ, Measured after gain, Listening, with an optional
@@ -76,6 +86,16 @@ the voice's integrated LUFS, attack 20 ms, release 400 ms; beds 13.3 dB under,
 the original (music 7.4 LU under the voice, a 2.8 LU dip). MIX_START holds the
 master targets: -16 LUFS and -1.5 dBTP from mix-plan.md:43, LRA=11 a local choice.
 
+`--levels levels.json` loads the policy written by
+`mix/mix_check.py calibrate --stems APPROVED_DIR [APPROVED_DIR ...] --out levels.json`.
+The renderer uses its checker thresholds and `ducking` settings and records the
+effective policy in render.json. The ducking JSON has music/bed entries with
+threshold_db_re_voice, attack_ms and release_ms; ratios still come from each CSV
+row. Calibration measures gaps from baked stems and preserves the default
+compressor settings, since those settings cannot be recovered from the audio.
+Edit those JSON settings when needed. Without --levels, thresholds and ducking
+remain the original defaults.
+
 The exact four stems sum with amix=normalize=0. One whole-mix loudnorm operation
 uses two passes: measure, then apply those measurements. FFmpeg can fall back
 to dynamic normalisation when linear gain cannot satisfy peak/LRA constraints.
@@ -97,7 +117,7 @@ Invalid CSV is rejected before output creation.
 
 ## Verification and limits
 
-check generates deterministic inputs in a temporary directory under render/
+check generates deterministic inputs in a system temporary directory
 and removes them afterwards. It renders the correct implementation and six
 in-memory source mutations: no ducking, lost cue delay, wrong excerpt, ignored
 gain, -10 LUFS master, and missing alignment. Each of the six corresponding
@@ -107,6 +127,11 @@ propagate exit 2. The fixture is deliberately loud enough to fail the speech
 gap when ducking is removed, including checker versions that report duck depth
 as INFO. Correlation expectations derive from source samples, not render helpers.
 It also checks a passing report, Unicode/comma paths and an audible padded tail.
+Three more source mutations remove looping, remove crossfades, and ignore peak
+alignment. The corresponding sample assertions reject silence after a short
+source, an abrupt loop seam, and a misplaced negative stereo peak. Additional
+checks cover pre-zero cropping, unchanged behavior with omitted columns,
+invalid column values, stricter --levels failures, and changed ducking samples.
 
 No source identity, licensing, voice intelligibility, spectral taste, source-pack
 coherence or peak-to-visual contact is inferred. Synthesised "voice" is only an
@@ -118,18 +143,10 @@ use the checker's sfx pause rule, so intentional speech overlap may fail.
 Source durations rely on ffprobe metadata (compressed-file boundaries may be
 approximate). Inputs with more than two channels are rejected. Large timelines
 need substantial disk/RAM: the imported checker decodes whole stems. No section
-jump/silence scan, source looping, automatic gain fixing, music presence guarantee,
+jump/silence scan, automatic gain fixing, music presence guarantee,
 parameter automation, recognition pass or project-profile override is included.
 Repeated cues on the same layer sum and may clip; inspect FAILs before listening.
 Subprocess logging and the existing decoder adapter require single-threaded use.
 
-The library demo can be reproduced with an explicit library root:
 
-~~~powershell
-python -B render/demo_render.py --library "YOUR_LIBRARY_ROOT" --out "render/demo-new"
-~~~
-
-It selects three fixed relative library candidates, creates harmonic vowel-like
-voice bursts, renders one cue sheet, and verifies source hashes, sizes and mtimes.
-Its evidence is measurement plus filenames, with no recognition or ear judgement.
-See REPORT.md for the current measured run. **listening pending**.
+The published self-test generates its own synthetic audio and needs no private library or production demo.

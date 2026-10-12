@@ -44,6 +44,7 @@ SKILL = HERE.parent
 sys.path.insert(0, str(SKILL / "scripts"))
 # Reuse the actual search implementation; Index is deliberately avoided because it writes name caches.
 from audio_search import clean_name, words, stem, PAIR, DIM
+from library_metadata import note_missing_ledger, relative_path
 
 MODEL = "laion/clap-htsat-unfused"
 RULE_VERSION = "upper-tail-knee-v1"
@@ -100,8 +101,10 @@ def load_library(root):
     root = Path(root)
     tagged_rows, tag_meta = read_csv_snapshot(root / "AUDIO_TAGS.csv", optional=True)
     ledger_rows, ledger_meta = read_csv_snapshot(root / "AUDIO_LEDGER_files.csv", optional=True)
-    tagged = {r["relative_path"]: r for r in tagged_rows}  # latest, even if its vector is unusable
-    ledger = {r["relative_path"]: r for r in ledger_rows}
+    if ledger_meta.get("missing"):
+        note_missing_ledger(root)
+    tagged = {relative_path(r["relative_path"]): r for r in tagged_rows}  # latest, even if its vector is unusable
+    ledger = {relative_path(r["relative_path"]): r for r in ledger_rows}
     paths = sorted(set(tagged) | set(ledger))
     rows = [tagged.get(p, {}) for p in paths]
     packs = [ledger.get(p, {}).get("pack") or (p.replace("\\", "/").split("/")[0] if "/" in p.replace("\\", "/") else "") for p in paths]
