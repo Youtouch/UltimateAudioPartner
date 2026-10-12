@@ -132,4 +132,4 @@ python -B render/demo_render.py --library "YOUR_LIBRARY_ROOT" --out "render/demo
 It selects three fixed relative library candidates, creates harmonic vowel-like
 voice bursts, renders one cue sheet, and verifies source hashes, sizes and mtimes.
 Its evidence is measurement plus filenames, with no recognition or ear judgement.
-See REPORT.md and demo/mix/cue_report.md. **listening pending**.
+See REPORT.md for the current measured run. **listening pending**.
