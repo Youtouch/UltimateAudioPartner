@@ -179,6 +179,9 @@ body { grid-template-columns:260px 1fr; }
 </header>
 
 <aside>
+  <h2>UCS categories</h2>
+  <p class="hint">Counts use the default 0.9 target, including uncalibrated source candidates.</p>
+  <div id="categorytree" aria-label="UCS category tree"><span class="sub">Loading categories…</span></div>
   <h2>Kind</h2>
   <div class="seg-group" id="buckets"></div>
   <h2>Pack</h2>
@@ -216,6 +219,18 @@ body { grid-template-columns:260px 1fr; }
 </aside>
 
 <main>
+  <section id="categoryscope" hidden aria-live="polite" style="padding:12px 18px;border-bottom:1px solid var(--line)">
+    <div id="categorysummary"></div><p class="hint" id="categorycoverage"></p>
+    <label class="toggle">Yardstick precision target <select id="categoryprecision" aria-label="Category precision target"><option value="0.9">0.9</option><option value="0.8">0.8</option></select></label>
+    <button class="btn" id="checkcategory">Check this category</button>
+  </section>
+  <section id="categorycheck" hidden aria-label="Check this category" style="padding:12px 18px;border-bottom:1px solid var(--line)">
+    <strong id="checkprogress"></strong><p id="checkpath" class="sub"></p>
+    <p class="hint">Check source candidates. The answer rate below describes only the targeted examples you answered.</p>
+    <button class="btn" id="checkyes">Yes (Y)</button> <button class="btn" id="checkno">No (N)</button>
+    <button class="btn" id="checkreplay">Play again (Space)</button> <button class="btn" id="checkclose">Close check</button>
+    <p class="hint" id="checkprecision"></p>
+  </section>
   <div class="bar">
     <span id="count"></span>
     <span id="selected"></span>
@@ -289,6 +304,7 @@ const ICON = {
   copy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M11 5V2H2v9h3"/></svg>',
 };
 let D = null, verdicts = {}, filtered = [], shown = 0, current = -1, scores = null, evidence = null, scoreLabel = '';
+let categoryResult = null, pathScores = null, categoryEvidence = null, categoryQuery = '', checkSession = null, matchRequest = 0;
 const state = { bucket: '', tags: [], vtags: [], words: [] };
 const picked = new Set();  // paths ticked for comparison or export
 let comparison = null, context = null, gainNode = null, playbackRequest = 0;
@@ -434,6 +450,7 @@ document.addEventListener('click', e => {
 }, true);
 
 async function load() {
+  const request = ++matchRequest;
   const previousPath = current >= 0 && D ? D.rows[current]?.[0] : null;
   const at = audio.currentTime || 0, wasPlaying = !audio.paused, detailWasOpen = !$('#inspector').hidden;
   ++playbackRequest;  // a pending open must not write into the newly loaded rows
@@ -460,6 +477,8 @@ async function load() {
   const examples = D.examples?.length ? D.examples : D.demo ? ['short bright click', 'punchy laser', 'deep footsteps'] : [];
   $('#exampleList').innerHTML = examples.map(e => `<button class="chip" data-example="${esc(e)}">${esc(e)}</button>`).join(' ')
     || '<span>tag and describe your library to see examples from it</span>';
+  await loadCategories();
+  await refreshActiveCategory(request);
   apply();
   if (current >= 0) {
     await play(current, at, wasPlaying);
@@ -489,6 +508,7 @@ function apply() {
     if (tagged && r[4] == null) continue;
     if (liked && v !== 'like') continue;
     if (hiderej && v === 'reject') continue;
+    if (pathScores && pathScores[r[0]] == null) continue;
     if (scores && (r[8] < 0 || scores[r[8]] == null)) continue;
     if (q.length) { const p = r[0].toLowerCase(); if (!q.every(w => p.includes(w))) continue; }
     if (tagIds.length) {
@@ -505,16 +525,19 @@ function apply() {
   const sort = $('#sort').value, R = D.rows;
   // A match ranks every tagged file; keep the best 300 so the list and the tag counts describe the matches.
   if (scores) filtered = filtered.sort((a, b) => scores[R[b][8]] - scores[R[a][8]]).slice(0, 300);
+  // Category membership is complete. Rendering paginates; it never truncates this set.
+  if (pathScores) filtered.sort((a, b) => pathScores[R[b][0]] - pathScores[R[a][0]]);
   const tagKey = i => state.tags.length ? Math.min(...state.tags.map(t => labelScore(R[i], t))) : (R[i][6][1] ?? 0);
-  if (sort === 'score' && scores) filtered.sort((a, b) => scores[R[b][8]] - scores[R[a][8]]);
+  if (sort === 'score' && pathScores) filtered.sort((a, b) => pathScores[R[b][0]] - pathScores[R[a][0]]);
+  else if (sort === 'score' && scores) filtered.sort((a, b) => scores[R[b][8]] - scores[R[a][8]]);
   else if (sort === 'tag') filtered.sort((a, b) => tagKey(b) - tagKey(a));
   else if (sort === 'short') filtered.sort((a, b) => (R[a][3] ?? 1e9) - (R[b][3] ?? 1e9));
   else if (sort === 'long') filtered.sort((a, b) => (R[b][3] ?? 0) - (R[a][3] ?? 0));
-  $('#count').textContent = (scores ? `Best ${filtered.length} matches for ${scoreLabel}` : `${filtered.length.toLocaleString()} sounds`);
+  $('#count').textContent = categoryResult ? `${filtered.length.toLocaleString()} shown of ${categoryResult.counts.total.toLocaleString()} category files · visible filters still apply` : (scores ? `Best ${filtered.length} matches for ${scoreLabel}` : `${filtered.length.toLocaleString()} sounds`);
   $('#selected').innerHTML = state.words.map(t => `<button class="chip" data-unword="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
     + state.vtags.map(t => `<button class="chip" data-unvtag="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
     + state.tags.map(t => `<button class="chip" data-untag="${esc(t)}" title="Remove">${esc(t)} ×</button>`).join(' ')
-    + (scores ? ` <button class="chip" id="clearscore" title="Clear the match">match ×</button>` : '');
+    + (scores || pathScores ? ` <button class="chip" id="clearscore" title="Clear the match">match ×</button>` : '');
   facets(strength);
   vfacets();
   wordfacets();
@@ -571,6 +594,7 @@ function vfacets() {
 
 function rowHtml(i) {
   const r = D.rows[i], v = verdicts[r[0]]?.verdict || '', file = r[0].split('/').pop();
+  const category = categoryEvidence?.[r[0]], categoryBadge = category ? `<span class="ev" title="${esc((category.sources || []).join(', ') + '; threshold ' + (category.threshold ?? 'unsupported') + '; ' + (category.precision_basis || 'filename proxy'))}">${esc(category.confidence)} · ${category.stale ? 'stale evidence' : category.calibrated ? 'calibrated prediction' : 'uncalibrated candidate'}</span>` : '';
   const folder = r[0].slice(0, r[0].length - file.length - 1);
   const strength = +$('#strength').value, sel = state.tags.map(t => D.labelIndex[t]);
   const vt = vtagsOf(r).sort((a, b) => nsrc(b[1]) - nsrc(a[1]));
@@ -588,9 +612,9 @@ function rowHtml(i) {
   }).join('');
   return `<div class="item ${v}${i === current ? ' current' : ''}" data-i="${i}">
     <button class="play" data-act="play" aria-label="Play ${esc(file)}">${i === current && !audio.paused ? ICON.pause : ICON.play}</button>
-    <div style="min-width:0"><div class="name" title="${esc(r[0])}">${esc(file)}</div><div class="sub">${esc(folder)}</div></div>
+    <div style="min-width:0"><div class="name" title="${esc(r[0])}">${esc(file)}</div><div class="sub">${esc(folder)}${r[13] && r[13]!=='recognised' ? ' · '+esc(r[13]) : ''}</div></div>
     ${waveSvg(r[0])}
-    <div class="meta">${evidence && evidence[r[8]] ? `<span class="ev" title="Rank of this file in each source; a dash means that source did not find it">${evidenceHtml(r[8])}</span>` : ''}${scores && r[8] >= 0 && scores[r[8]] != null ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
+    <div class="meta">${categoryBadge}${evidence && evidence[r[8]] ? `<span class="ev" title="Rank of this file in each source; a dash means that source did not find it">${evidenceHtml(r[8])}</span>` : ''}${scores && r[8] >= 0 && scores[r[8]] != null ? `<span class="score" title="Match">${scores[r[8]].toFixed(2)}</span>` : ''}
       <span class="dur">${fmt(r[3])}</span>
       <input type="checkbox" class="sel" data-act="select" aria-label="Tick for comparison or export" title="Tick for comparison or export"${picked.has(r[0]) ? ' checked' : ''}>
       <button class="icon${v === 'like' ? ' on-like' : ''}" data-act="like" aria-label="Like" title="Approve (A)">${v === 'like' ? ICON.likeOn : ICON.like}</button>
@@ -648,9 +672,14 @@ async function verdict(i, v) {
 }
 $('#approved').onclick = () => match('/api/approved?avoid=' + encodeURIComponent($('#avoid').value), 'like my approved');
 async function match(url, label) {
+  const request = ++matchRequest;
   $('#status').textContent = 'Matching… (the first search loads the models and indexes the names: up to a minute, longer while a tagging pass is running)';
   const res = await fetch(url), data = await res.json();
+  if (request !== matchRequest) return;
   if (!res.ok) { $('#status').textContent = data.error; return; }
+  categoryResult = data.mode === 'category' ? data : null; pathScores = data.path_scores || null;
+  categoryEvidence = categoryResult ? Object.fromEntries(data.results.map(r => [r.path, r])) : null;
+  showCategoryScope();
   scores = data.scores; evidence = data.evidence || null; scoreLabel = label + (data.labels?.length ? ` · labels checked: ${data.labels.slice(0, 3).join(', ')}` : '')
     + (data.filters?.length ? ` · ${data.matching} match ${data.filters.join(', ')} (listed first)` : ''); $('#sort').value = 'score';
   if (data.filters?.length) toast(`“${data.filters.join(', ')}” filter on measured values; “${data.sound || 'any sound'}” is what is searched`);
@@ -690,7 +719,7 @@ document.body.addEventListener('click', e => {
   const ex = e.target.closest('[data-example]'); if (ex) { $('#describe').value = ex.dataset.example; find(); }
   const fv = e.target.closest('#vfacets [data-vtag]'); if (fv) { state.vtags.push(fv.dataset.vtag); $('#tagq').value = ''; apply(); }
   const f = e.target.closest('#facets [data-tag]'); if (f) { state.tags.push(f.dataset.tag); $('#tagq').value = ''; apply(); }
-  if (e.target.id === 'clearscore') { scores = null; evidence = null; if ($('#sort').value === 'score') $('#sort').value = 'name'; apply(); }
+  if (e.target.id === 'clearscore') { ++matchRequest; scores = null; evidence = null; pathScores = null; categoryResult = null; categoryEvidence = null; showCategoryScope(); if ($('#sort').value === 'score') $('#sort').value = 'name'; apply(); }
 });
 let timer; const later = () => { clearTimeout(timer); timer = setTimeout(apply, 150); };
 ['#q', '#pack', '#dmin', '#dmax', '#strength'].forEach(s => $(s).addEventListener('input', later));
@@ -729,7 +758,7 @@ $('#exportform').addEventListener('submit', async e => {
   } finally { $('#exportgo').disabled = false; $('#exportgo').textContent = 'Export'; }
 });
 $('#tagq').addEventListener('input', () => { facets(+$('#strength').value); vfacets(); });
-const find = () => { const t = $('#describe').value.trim(); if (t) match('/api/search?q=' + encodeURIComponent(t), '“' + t + '”'); };
+const find = () => { const t = $('#describe').value.trim(); if (t) { categoryQuery = t; match('/api/search?q=' + encodeURIComponent(t) + '&precision=' + $('#categoryprecision').value, '“' + t + '”'); } };
 $('#go').onclick = find; $('#describe').addEventListener('keydown', e => { if (e.key === 'Enter') find(); });
 $('#reload').onclick = load;
 $('#note').addEventListener('change', () => { if (current >= 0 && verdicts[D.rows[current][0]]) {
@@ -749,6 +778,11 @@ document.addEventListener('keydown', e => {
   if (e.target.matches?.('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
   if (document.querySelector('dialog[open]')) return;
   const k = e.key.toLowerCase();
+  if (checkSession && !$('#categorycheck').hidden) {
+    if (k === 'y' || k === 'n') { e.preventDefault(); answerCategory(k === 'y'); }
+    else if (k === ' ') { e.preventDefault(); playCheck(); }
+    return;
+  }
   if (k === 'arrowdown' || k === 'j') { e.preventDefault(); step(1); }
   else if (k === 'arrowup' || k === 'k') { e.preventDefault(); step(-1); }
   else if (k === ' ') { e.preventDefault(); if (current < 0) step(1); else audio.paused ? play(current, audio.currentTime) : audio.pause(); }
@@ -760,6 +794,104 @@ document.addEventListener('keydown', e => {
   else if (current >= 0 && (k === 'c' || k === 'C')) copy(current);
   else if (current >= 0 && k === 's' && D.rows[current][8] >= 0) match('/api/like?p=' + encodeURIComponent(D.rows[current][0]) + '&avoid=' + encodeURIComponent($('#avoid').value), 'more like this');
 });
+function categoryNodes(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = row.category || 'Other';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  return [...groups].map(([category, children]) => {
+    const count = children[0]?.parent_count;
+    const parentCount = Number.isFinite(count) ? count.toLocaleString() : children.reduce((n, c) => n + c.count, 0).toLocaleString() + ' assignments';
+    return `<details><summary><button class="chip" data-category="${esc(category)}">${esc(category)} <small>${parentCount}</small></button></summary>`
+      + children.map(row => `<button class="chip" style="margin-left:8px" data-category="${esc(row.catid)}" title="${esc(row.catid)}">${esc(row.subcategory)} <small>${row.count.toLocaleString()}</small></button>`).join('') + '</details>';
+  }).join('');
+}
+async function loadCategories() {
+  try {
+    const response = await fetch('/api/categories', {cache:'no-store'}), data = await response.json();
+    if (!response.ok) throw new Error(data.error);
+    D.categories = data.categories || [];
+    $('#categorytree').innerHTML = categoryNodes(D.categories) || '<span class="sub">Build a recall catalog to browse UCS categories.</span>';
+  } catch(error) { $('#categorytree').textContent = error.message; }
+}
+async function refreshActiveCategory(request) {
+  if (!categoryResult || !categoryQuery) return;
+  const response = await fetch('/api/search?q=' + encodeURIComponent(categoryQuery) + '&precision=' + $('#categoryprecision').value, {cache:'no-store'});
+  const data = await response.json();
+  if (request !== matchRequest) return;
+  if (!response.ok) throw new Error(data.error);
+  categoryResult = data.mode === 'category' ? data : null;
+  pathScores = data.path_scores || null;
+  categoryEvidence = categoryResult ? Object.fromEntries(data.results.map(row => [row.path, row])) : null;
+  scores = data.scores; evidence = data.evidence || null;
+  showCategoryScope();
+}
+function showCategoryScope() {
+  $('#categoryscope').hidden = !categoryResult;
+  if (!categoryResult) return;
+  const count = categoryResult.counts, scope = categoryResult.coverage;
+  const calibrated = categoryResult.results.filter(r => r.calibrated).length, uncalibrated = count.total - calibrated;
+  $('#categorysummary').textContent = `${count.total.toLocaleString()} ${scope.label || 'category files'}: ${count.confirmed.toLocaleString()} confirmed with independent sources and deployment support, ${count.likely.toLocaleString()} likely (deployment support or source agreement incomplete). ${calibrated.toLocaleString()} calibrated predictions; ${uncalibrated.toLocaleString()} uncalibrated candidates.`;
+  const support = scope.calibrated ? `frozen deployment gate supports filename-proxy precision ${scope.precision || $('#categoryprecision').value}` : 'precision target has no verified deployment support for some or all categories';
+  $('#categorycoverage').textContent = `${scope.label || categoryQuery}; ${scope.catids?.length || 0} UCS subcategories; ${support}. ${scope.adoption_reason ? scope.adoption_reason + ' ' : ''}${scope.threshold_policy || 'Complete catalog membership; no top K.'} Precision support applies to calibrated predictions only; names can be wrong. ${categoryResult.filters?.length ? categoryResult.matching + ' match ' + categoryResult.filters.join(', ') + ', listed first. ' : ''}Visible filters and hidden duplicate copies can reduce the shown count.${scope.stale ? ' Catalog out of date: ' + (scope.stale_reasons?.join('; ') || 'source audio changed') + '. Retag changed audio and build new recall metadata.' : ''}`;
+  $('#checkcategory').disabled = !scope.catids?.length;
+}
+$('#categorytree').addEventListener('click', e => {
+  const button = e.target.closest('[data-category]'); if (!button) return;
+  e.preventDefault(); $('#describe').value = button.dataset.category; find();
+});
+$('#categoryprecision').addEventListener('change', () => { $('#describe').value = categoryQuery; find(); });
+function precisionText(data) {
+  if (!data?.answered) return 'No answered boundary examples yet. Y = yes, N = no; each answer is saved.';
+  return `${data.yes}/${data.answered} answered examples match (${(100 * data.precision).toFixed(0)}%; Wilson 95% ${(100 * data.wilson95[0]).toFixed(0)}–${(100 * data.wilson95[1]).toFixed(0)}%). ${data.scope}`;
+}
+async function startCategoryCheck() {
+  if (!categoryResult?.coverage.catids?.length) return;
+  // A category check records a specific CatID for every example, even for a parent query.
+  const catids = categoryResult.coverage.catids;
+  const batches = [];
+  for (const catid of catids) {
+    const response = await fetch('/api/category-check?catid=' + encodeURIComponent(catid) + '&n=20'), data = await response.json();
+    if (!response.ok) { toast(data.error); continue; }
+    batches.push(data);
+  }
+  // Round-robin across children, so broad categories do not check only their first child.
+  const samples = [], seen = new Set();
+  for (let j = 0; samples.length < 20 && batches.some(b => j < b.samples.length); j++) for (const batch of batches) {
+    const row = batch.samples[j]; if (!row || samples.length >= 20) continue;
+    const key = row.path + '\0' + row.catid; if (!seen.has(key)) { seen.add(key); samples.push(row); }
+  }
+  if (!samples.length) return toast('No source candidates available for this category.');
+  checkSession = {samples, position:0, saving:false}; $('#categorycheck').hidden = false;
+  $('#checkprecision').textContent = precisionText(batches[0]?.precision); playCheck();
+}
+function playCheck() {
+  if (!checkSession) return;
+  const row = checkSession.samples[checkSession.position];
+  const node = D.categories?.find(n => n.catid === row.catid), label = node ? node.category + ' › ' + node.subcategory : row.catid;
+  $('#checkprogress').textContent = `Does this sound belong to ${label}? ${checkSession.position + 1}/${checkSession.samples.length}`;
+  $('#checkpath').textContent = row.path;
+  const i = D.rows.findIndex(r => r[0] === row.path); if (i >= 0) play(i);
+}
+async function answerCategory(answer) {
+  if (!checkSession || checkSession.saving) return;
+  const session = checkSession, row = session.samples[session.position]; session.saving = true;
+  $('#checkyes').disabled = $('#checkno').disabled = true;
+  try {
+    const response = await fetch('/api/category-answer', {method:'POST', body:JSON.stringify({path:row.path, catid:row.catid, answer})}), data = await response.json();
+    if (!response.ok) return toast('Answer not saved: ' + data.error);
+    verdicts = data.verdicts; $('#checkprecision').textContent = precisionText(data.precision);
+    session.position++;
+    if (session.position >= session.samples.length) { checkSession = null; $('#checkprogress').textContent = 'Category check complete — answers saved locally'; $('#checkpath').textContent = ''; }
+    else if (checkSession === session) playCheck();
+  } finally { session.saving = false; $('#checkyes').disabled = $('#checkno').disabled = !checkSession; }
+}
+$('#checkcategory').onclick = startCategoryCheck;
+$('#checkyes').onclick = () => answerCategory(true); $('#checkno').onclick = () => answerCategory(false);
+$('#checkreplay').onclick = playCheck;
+$('#checkclose').onclick = () => { checkSession = null; $('#categorycheck').hidden = true; };
 load().catch(e => { $('#status').textContent = 'Could not load: ' + e.message; });
 </script>
 </body>

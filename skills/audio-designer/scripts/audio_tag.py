@@ -9,8 +9,7 @@
 
 Models download from Hugging Face on first use (cached in ~/.cache/huggingface):
 CED-base (527 AudioSet sound-event labels; AST with AUDIO_TAGGER=ast) and LAION CLAP (text-to-audio similarity).
-CED-base replaced AST after a paired test on 513 name-sampled clips: right where AST was wrong on 59 clips,
-the reverse on 21 (p < 0.0001), at half the time per clip. Every tags row records the tagger that wrote it.
+Every tags row records the tagger that wrote it.
 A label is a model's reading, not a listen: keep it beside the measurements and the user's ear.
 """
 
@@ -25,7 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from audio_map import load_audio
-from library_metadata import refresh_ledger, write_csv_atomic
+from library_metadata import refresh_ledger, write_csv_atomic, metadata_directory, measure_metadata
 
 AST = 'MIT/ast-finetuned-audioset-10-10-0.4593'
 # CED runs model code from its Hugging Face repo: pinned to the revision whose code was reviewed (2026-10-11).
@@ -36,7 +35,7 @@ CLAP_PADDING = 'pad'
 CLAP_WINDOW = 10  # seconds: each file's fingerprint covers its first 10 s
 AUDIO = {'.wav', '.mp3', '.ogg', '.flac', '.aif', '.aiff', '.m4a', '.aac', '.opus', '.mp4', '.mov'}
 FIELDS = ['relative_path', 'size_bytes', 'mtime_ns', 'seconds_tagged', 'speech', 'music',
-          'silence', 'top_labels', 'timeline', 'clap_row', 'tagger']
+          'silence', 'top_labels', 'timeline', 'clap_row', 'tagger', 'recognition_status', 'error']
 _models = {}
 
 
@@ -97,11 +96,31 @@ def summarise(probs, labels, window, top=8, floor=0.1):
             'timeline': timeline}
 
 
+def recognition_status(y,sr):
+    if len(y)/sr<.05:return 'too short to recognise'
+    if not np.isfinite(y).all():return 'unreadable'
+    if np.max(np.abs(y),initial=0)<=1e-8:return 'digital silence'
+    return 'recognised'
+
+
+def empty_result(status,error=''):
+    return dict(labels={},speech=0.,music=0.,silence=1. if status in ('digital silence','silence in analysed excerpt') else 0.,timeline=[],recognition_status=status,error=error)
+
+
 def tag_file(path, seconds=60):
-    y, sr = load_audio(path, seconds=seconds, sample_rate=16000, mono=True)
+    try:
+        y, sr = load_audio(path, seconds=seconds, sample_rate=16000, mono=True)
+    except Exception as exc:
+        return {**empty_result('unreadable',str(exc)), 'seconds_tagged':0}
     if not len(y):
-        raise ValueError(f'Empty audio: {path}')
-    result = summarise(*tag_samples(y, sr))
+        return {**empty_result('unreadable','no decoded samples'), 'seconds_tagged':0}
+    status=recognition_status(y,sr)
+    if status=='digital silence':
+        try:
+            if measure_metadata(path)['duration_seconds']>len(y)/sr+.01:status='silence in analysed excerpt'
+        except Exception:status='silence in analysed excerpt'
+    result = summarise(*tag_samples(y, sr)) if status=='recognised' else empty_result(status)
+    result.setdefault('recognition_status',status)
     result['seconds_tagged'] = round(len(y) / sr, 2)
     return result
 
@@ -110,7 +129,6 @@ def embed_audio(ys, sr=48000):
     import torch
     processor, model = clap()
     # Silence-pad short clips: the checkpoint's default 'repeatpad' loops a 0.4 s click into a 10 s rattle.
-    # Measured on 633 click-named files + 1,500 others: click hits in the top 100 rose from 38-60 to 69-77.
     inputs = processor(audio=list(ys), sampling_rate=sr, return_tensors='pt', padding=CLAP_PADDING).to(model.device)
     with torch.no_grad():
         e = model.get_audio_features(**inputs)
@@ -151,7 +169,7 @@ def tag_row(rel, size, mtime, r, seconds_tagged, clap_row, tagger_name):
             'top_labels': '; '.join(f'{k} {v}' for k, v in r['labels'].items()),
             'timeline': ' | '.join(f"{w['start']:g}-{w['end']:g}: " + ', '.join(f'{k} {v}' for k, v in w['labels'].items())
                                    for w in r['timeline']),
-            'clap_row': clap_row, 'tagger': tagger_name}
+            'clap_row': clap_row, 'tagger': tagger_name, 'recognition_status':r.get('recognition_status','recognised'), 'error':r.get('error','')}
 
 
 def library(root, only, out, seconds, batch=16):
@@ -161,6 +179,8 @@ def library(root, only, out, seconds, batch=16):
     root, out = Path(root), Path(out)
     if not root.is_dir():
         raise ValueError(f'Library folder does not exist: {root}')
+    if out.name=='AUDIO_TAGS.csv' and out.parent.resolve()==root.resolve():
+        out=metadata_directory(root,create=True)/out.name
     out.parent.mkdir(parents=True, exist_ok=True)
     done = {}
     if out.exists():
@@ -171,14 +191,16 @@ def library(root, only, out, seconds, batch=16):
             done = {r['relative_path']: r for r in reader}
     all_files = sorted(p for p in root.rglob('*') if p.suffix.lower() in AUDIO and p.is_file())
     # Full-length metadata is independent of the recognition excerpt and --only selection.
-    refresh_ledger(root, all_files)
+    refresh_ledger(root, all_files, metadata_root=out.parent)
+    with (out.parent/'AUDIO_LEDGER_files.csv').open(encoding='utf-8-sig',newline='') as ledger:
+        durations={r['relative_path']:float(r.get('duration_seconds') or 0) for r in csv.DictReader(ledger)}
     files = [p for p in all_files
              if fnmatch.fnmatch(p.relative_to(root).as_posix().lower(), (only or '*').lower())]
     todo = []
     for path in files:
         rel, stat = path.relative_to(root).as_posix(), path.stat()
         old = done.get(rel)
-        if not (old and old['size_bytes'] == str(stat.st_size) and old['mtime_ns'] == str(stat.st_mtime_ns)):
+        if not (old and old.get('recognition_status')!='unreadable' and old['size_bytes'] == str(stat.st_size) and old['mtime_ns'] == str(stat.st_mtime_ns)):
             todo.append((path, rel, stat))
     print(f'{len(files)} files, {len(todo)} to tag', file=sys.stderr, flush=True)
     vectors = out.with_name(out.stem + '_clap.f32')
@@ -196,15 +218,21 @@ def library(root, only, out, seconds, batch=16):
                     if isinstance(audio, Exception):
                         raise audio
                     y48, y16 = audio
-                    r = summarise(*tag_samples(y16, 16000))
-                    vec = embed_audio([y48[:48000 * 10]])[0].astype('<f4')
+                    status=recognition_status(y16,16000)
+                    if status=='digital silence' and durations.get(rel,0)>len(y16)/16000+.01:status='silence in analysed excerpt'
+                    r = summarise(*tag_samples(y16, 16000)) if status=='recognised' else empty_result(status)
+                    r.setdefault('recognition_status',status)
+                    vec = embed_audio([y48[:48000 * 10]])[0].astype('<f4') if status=='recognised' else None
                 except Exception as exc:  # one bad file must not stop a 35k-file pass
                     reason = str(exc).strip() or type(exc).__name__
                     skipped.append({'relative_path': rel, 'reason': reason})
                     print(f'SKIP {rel}: {reason}', file=sys.stderr, flush=True)
+                    previous=done.get(rel,{})
+                    if previous.get('recognition_status')!='unreadable' or previous.get('size_bytes')!=str(stat.st_size) or previous.get('mtime_ns')!=str(stat.st_mtime_ns):
+                        writer.writerow(tag_row(rel,stat.st_size,stat.st_mtime_ns,empty_result('unreadable',reason),0,-1,TAGGER));f.flush()
                     continue
-                row = v.tell() // (4 * len(vec))
-                v.write(vec.tobytes())
+                row = v.tell() // (4 * len(vec)) if vec is not None else -1
+                if vec is not None:v.write(vec.tobytes())
                 v.flush()
                 settings = clap_settings(vectors)
                 if settings['pad_checked_rows'] == row:  # every earlier row is known to be silence-padded
@@ -214,7 +242,7 @@ def library(root, only, out, seconds, batch=16):
                 f.flush()
                 tagged += 1
             print(f'{min(b + batch, len(todo))}/{len(todo)}', file=sys.stderr, flush=True)
-    write_csv_atomic(root / 'AUDIO_TAGS_skipped.csv', ['relative_path', 'reason'], skipped)
+    write_csv_atomic(out.parent / 'AUDIO_TAGS_skipped.csv', ['relative_path', 'reason'], skipped)
     summary = {'tagged': tagged, 'unchanged': len(files) - len(todo), 'skipped': len(skipped)}
     print('SUMMARY ' + ' '.join(f'{key}={value}' for key, value in summary.items()), file=sys.stderr, flush=True)
     return summary

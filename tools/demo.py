@@ -22,9 +22,9 @@ def skill_source(repo=REPO):
     published = Path(repo) / 'skills/audio-designer'
     live = Path.home() / '.agents/skills/audio-designer'
     # The new helper distinguishes a complete published copy from a maintainer's older mirror.
-    if (published / 'scripts/demo_metadata.py').is_file():
+    if (published / 'scripts/demo_metadata.py').is_file() and (published / 'tagging/recall_tags.py').is_file():
         return published
-    if (live / 'scripts/demo_metadata.py').is_file():
+    if (live / 'scripts/demo_metadata.py').is_file() and (live / 'tagging/recall_tags.py').is_file():
         return live
     raise FileNotFoundError('Demo helper missing. Use a complete UAP release or sync the live skill.')
 
@@ -121,19 +121,26 @@ def build_demo(out=None, source=None, workers=1):
     write_csv(root / 'AUDIO_VOCAB_TAGS.csv', ['relative_path', 'tag', 'name', 'label', 'audio', 'sources', 'tagger', 'built_at'], vocab)
     marker = dict(schema=demo_metadata.SCHEMA,
                   labels='Synthetic generator tags: single source, not recognition or independent agreement.',
-                  search='Demo search uses file names and measured words; semantic model search is available on a normally tagged library.',
+                  search='Demo categories use uncalibrated filename candidates and measured words. The 13-file toy library cannot support precision thresholds.',
                   similarity='Demo similarity uses measured spectrum, not CLAP fingerprints.',
                   files=len(paths))
     (root / 'UAP_DEMO.json').write_text(json.dumps(marker, indent=2) + '\n', encoding='utf-8')
     (root / 'DEMO_README.md').write_text(
         '# Synthetic UAP demo\n\nAll audio was generated locally for this demo. No recordings or downloaded models.\n\n'
         'Descriptors are measured from the real samples. Category tags come from the generator and count as one '
-        'source; they do not claim model recognition or independent agreement. The demo searches names and measured '
-        'words. Similarity uses a simple measured spectrum; a normally tagged library uses CLAP instead.\n\n'
+        'source; they do not claim model recognition or independent agreement. Recall category search returns '
+        'uncalibrated filename candidates, with measured word matches listed first. The 13-file toy library cannot '
+        'support precision thresholds. Similarity uses a simple measured spectrum; a normally tagged library '
+        'uses CLAP instead.\n\n'
         'This scratch folder is safe to delete after closing the browser. Export to a different folder.\n', encoding='utf-8')
     audio_describe.library(root, workers=workers)
     with contextlib.redirect_stdout(sys.stderr):
         sfx_groups.build(root)
+    # Synthetic spectra are not CLAP fingerprints. No semantic prompts or recognition models
+    # are used; the tiny fixture deliberately exposes unsupported calibration in the browser.
+    sys.path.insert(0, str(skill / 'tagging'))
+    import recall_tags
+    recall_tags.build(root, prompts=False, progress=lambda message: None)
     print(f'Demo library ready: {root}', file=sys.stderr, flush=True)
     return root
 

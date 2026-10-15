@@ -150,7 +150,7 @@ def load_library(root):
 
 
 def load_vocabulary(path=None):
-    canonical = list(csv.DictReader((SKILL / "bench" / "vocabulary.csv").open(encoding="utf-8-sig", newline="")))
+    canonical = list(csv.DictReader((SKILL / "tagging" / "vocabulary.csv").open(encoding="utf-8-sig", newline="")))
     synonym_path = Path(path) if path else HERE / "vocabulary_synonyms.csv"
     with synonym_path.open(encoding="utf-8-sig", newline="") as f:
         synonym_rows = list(csv.DictReader(f))
@@ -634,7 +634,7 @@ def main():
         write_csv(out.parent / "AUDIO_VOCAB_LABEL_RULES.csv", label_rule_rows,
                   ["tagger", "tag", "threshold", "min_persistence", "status", "dev_candidates", "dev_confirmed", "dev_confirmed_packs"])
     manifest = {**library.meta, "built_at": built_at, "command": args.cmd, "output": str(out.resolve()),
-                "vocabulary_tags": len(tags), "canonical_vocabulary_sha256": digest((SKILL / "bench" / "vocabulary.csv").read_bytes()),
+                "vocabulary_tags": len(tags), "canonical_vocabulary_sha256": digest((SKILL / "tagging" / "vocabulary.csv").read_bytes()),
                 "synonyms_sha256": digest((HERE / "vocabulary_synonyms.csv").read_bytes()), "text_encoder": text_meta,
                 "rule_version": RULE_VERSION, "audio_rules": rules, "supported_pairs": int((count > 0).sum()),
                 "pairs_by_source_count": {str(k): int((count == k).sum()) for k in (1, 2, 3)},

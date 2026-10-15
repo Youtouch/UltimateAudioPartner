@@ -18,6 +18,7 @@ from sync_from_live import copy_repo_files, copy_skill, privacy_check
 CHECKS = [
     ('scripts/audio_map.py', '--selftest'),
     ('scripts/audio_tag.py', 'check'),
+    ('scripts/any_file_tests.py',),
     ('scripts/audio_search.py', 'check'),
     ('scripts/audio_index.py', 'check'),
     ('scripts/audio_describe.py', 'check'),
@@ -26,11 +27,8 @@ CHECKS = [
     ('scripts/library_tests.py',),
     ('scripts/browser_tests.py',),
     ('scripts/visual_tests.py',),
-    ('bench/bench_select.py', 'check'),
-    ('bench/bench_clap.py', 'check'),
-    ('bench/bench_eval.py', 'check'),
-    ('bench/tagger_trial.py', 'check'),
-    ('bench/short_sfx.py', 'check'),
+    ('tagging/ucs.py', 'check'),
+    ('tagging/recall_tags.py', 'check'),
     ('tagging/vocab_tags.py', 'check'),
     ('tagging/game_vocab.py', 'check'),
     ('mix/mix_check.py', 'check'),
@@ -56,6 +54,7 @@ def main():
                OMP_NUM_THREADS='2', MKL_NUM_THREADS='2', OPENBLAS_NUM_THREADS='2')
     failures = []
     with tempfile.TemporaryDirectory(prefix='uap-check-') as temporary:
+        env['NUMBA_CACHE_DIR'] = str(Path(temporary) / 'numba-cache')
         work = Path(temporary) / 'repo'
         copy_repo_files(repo, work)
         copy_skill(source, work / 'skills/audio-designer')

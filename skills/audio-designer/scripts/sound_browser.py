@@ -21,14 +21,14 @@ import sys
 import threading
 import time
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from library_metadata import read_metadata
+from library_metadata import read_metadata, metadata_directory
 import audio_describe
 import audio_visuals
 import demo_metadata
@@ -43,16 +43,25 @@ PAIR = re.compile(r'(.+?) (\d+(?:\.\d+)?)(?:, |; |$)')
 DIM = 512
 
 
+def recall_api():
+    tagging = str(HERE.parent / 'tagging')
+    if tagging not in sys.path:
+        sys.path.insert(0, tagging)
+    import recall_tags
+    return recall_tags
+
+
 def pairs(text):
     return [(m[0], float(m[1])) for m in PAIR.findall(text or '')]
 
 
 class Library:
-    def __init__(self, root):
+    def __init__(self, root, metadata_root=None):
         self.root = root.resolve()
-        self.tags = root / 'AUDIO_TAGS.csv'
-        self.vectors = root / 'AUDIO_TAGS_clap.f32'
-        self.verdicts_path = root / 'AUDIO_VERDICTS.json'
+        self.metadata_root=metadata_directory(root,metadata_root)
+        self.tags = self.metadata_root / 'AUDIO_TAGS.csv'
+        self.vectors = self.metadata_root / 'AUDIO_TAGS_clap.f32'
+        self.verdicts_path = self.metadata_root / 'AUDIO_VERDICTS.json'
         self.lock = threading.Lock()
         self.visual_lock = threading.RLock()
 
@@ -63,11 +72,11 @@ class Library:
             with self.tags.open(encoding='utf-8-sig', newline='') as f:
                 for r in csv.DictReader(f):
                     tagged[r['relative_path']] = r
-        ledger = read_metadata(self.root, tagged)
+        ledger = read_metadata(self.root, tagged, metadata_root=self.metadata_root)
         # Studio tags cross-referenced by tagging/vocab_tags.py: per file, tag -> which sources support it.
         # Bits: 1 name, 2 label, 4 audio. A tag with two or more bits is agreed; one bit is a candidate.
         vocab, vocab_index, vocab_tags = [], {}, {}
-        vpath = self.root / 'AUDIO_VOCAB_TAGS.csv'
+        vpath = self.metadata_root / 'AUDIO_VOCAB_TAGS.csv'
         if vpath.exists():
             with vpath.open(encoding='utf-8', newline='') as f:
                 for r in csv.DictReader(f):
@@ -84,7 +93,7 @@ class Library:
         table = audio_describe.table_for(paths, descriptors) if descriptors else None
         masks = [audio_describe.word_mask(w[0], table) for w in audio_describe.WORDS] if table is not None else []
         groups = {}
-        gpath = self.root / 'AUDIO_GROUPS.csv'
+        gpath = self.metadata_root / 'AUDIO_GROUPS.csv'
         if gpath.exists():
             with gpath.open(encoding='utf-8', newline='') as f:
                 groups = {r['relative_path']: r for r in csv.DictReader(f)}
@@ -109,7 +118,7 @@ class Library:
                         timeline.append([float(span.split('-')[0]), ids(pairs(labels))])
             rows.append([rel, led.get('pack') or (rel.split('/')[0] if '/' in rel else self.root.name), led.get('bucket') or '',
                          float(led.get('duration_seconds') or 0) or None,
-                         float(tag['speech']) if tag else None, float(tag['music']) if tag else None,
+                         float(tag.get('speech') or 0) if tag else None, float(tag.get('music') or 0) if tag else None,
                          ids(pairs(tag['top_labels'])) if tag else [], timeline,
                          int(tag['clap_row']) if tag and tag.get('clap_row') else -1,
                          vocab_tags.get(rel, []),
@@ -117,7 +126,7 @@ class Library:
                          [None if not np.isfinite(table[m][n]) else round(float(table[m][n]), 4) for m in SHOWN]
                          if table is not None and rel in descriptors else None,
                          [group['duplicate_set'], group['duplicate_of'], group['variation_set'], int(group['variation_size'] or 0)]
-                         if group else None])
+                         if group else None,led.get('recognition_status') or (tag or {}).get('recognition_status') or ('recognised' if tag else 'not tagged')])
         words = [{'word': w[0], 'aliases': list(w[1]), 'explain': w[3], 'measures': [m for m, _, _ in w[2]],
                   'rule': ' and '.join(f'{m} {op} {v:g}' for m, op, v in w[2])} for w in audio_describe.WORDS]
         waveforms = {}
@@ -155,7 +164,7 @@ class Library:
     def matrix(self):
         if not self.vectors.exists():
             return np.zeros((0, DIM), '<f4')
-        data = np.fromfile(self.vectors, '<f4')
+        data = np.fromfile(self.vectors, '<f4') if self.vectors.exists() else np.zeros(0,'<f4')
         return data[:len(data) // DIM * DIM].reshape(-1, DIM)  # a pass still writing may leave a partial row
 
     def similar(self, like):
@@ -168,11 +177,11 @@ class Library:
     def index(self):
         """Cache the same search index used by the command-line tools."""
         from audio_search import Index
-        stamp = self.tags.stat().st_mtime_ns
+        stamp = self.tags.stat().st_mtime_ns if self.tags.exists() else 0
         with self.lock:
             stale = getattr(self, '_index_stamp', None) != stamp and time.time() - getattr(self, '_index_built', 0) > 600
             if getattr(self, '_index', None) is None or stale:
-                self._index, self._index_stamp, self._index_built = Index(self.root), stamp, time.time()
+                self._index, self._index_stamp, self._index_built = Index(self.root,metadata_root=self.metadata_root), stamp, time.time()
             return self._index
 
     def ranked_payload(self, results):
@@ -185,15 +194,88 @@ class Library:
                 scores[row] = result['score']
         return {'scores': scores, 'results': results}
 
-    def search(self, query):
-        """Description search, with audio, name and label evidence kept separate."""
+    def search(self, query, precision=.9):
+        """A resolved category returns its whole threshold set; descriptions retain ranked search."""
+        from audio_search import category_search
+        category = category_search(self.root, query, precision)
+        if category is not None:
+            # Path scores include files without a CLAP fingerprint and preserve every member.
+            category['path_scores'] = {r['path']: float(len(category['results']) - k)
+                                       for k, r in enumerate(category['results'])}
+            category['scores'] = None
+            return category
         results, wanted = self.index().find(query, top=1000)
         # The page sorts by score: give it the search's own order (files matching the plain words first).
         data = self.ranked_payload([dict(r, score=float(len(results) - k)) for k, r in enumerate(results)])
+        if any(r['row']<0 for r in results):
+            data['path_scores']={r['path']:float(len(results)-k) for k,r in enumerate(results)}
+            data['scores']=None  # Fingerprint-row indexes cannot represent unreadable or too-short files.
         data['matching'] = sum(1 for r in results if r.get('matches_words'))
         sound, filters = self.index().parse(query)
         data.update(evidence={r['row']: r['evidence'] for r in results}, labels=list(wanted), sound=sound, filters=filters)
         return data
+
+    def categories(self):
+        api = recall_api()
+        if hasattr(api, 'load_catalog') and api.load_catalog(self.root) is None:
+            return {'categories': [], 'reason': 'Build a recall catalog to browse UCS categories.'}
+        return {'categories': api.category_tree(self.root)}
+
+    @staticmethod
+    def category_precision(verdicts, catids):
+        """Descriptive Wilson interval for answered source-candidate checks, never a library-wide claim."""
+        answers = [answer['answer'] for entry in verdicts.values() if isinstance(entry, dict)
+                   for catid, answer in entry.get('category_answers', {}).items()
+                   if catid in catids and isinstance(answer, dict) and type(answer.get('answer')) is bool]
+        n, yes = len(answers), sum(answers)
+        low = high = None
+        if n:
+            z, p = 1.959963984540054, yes / n
+            denom = 1 + z * z / n
+            centre = (p + z * z / (2 * n)) / denom
+            half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** .5) / denom
+            low, high = max(0., centre - half), min(1., centre + half)
+        return {'answered': n, 'yes': yes, 'precision': yes / n if n else None,
+                'wilson95': [low, high],
+                'scope': 'Historical answered source-candidate checks; a targeted sample, not overall library precision.'}
+
+    def category_check(self, catid, n=20):
+        api = recall_api()
+        if not isinstance(catid, str) or not catid.strip():
+            raise ValueError('Choose a UCS category first')
+        if not 1 <= n <= 20:
+            raise ValueError('Check between one and twenty examples')
+        samples = api.boundary_sample(self.root, catid, n=n)
+        if isinstance(samples, dict):
+            samples = samples.get('samples', samples.get('results', []))
+        checked = []
+        for sample in samples:
+            row = dict(sample)
+            self.file(row['path'])
+            row.setdefault('catid', catid)
+            checked.append(row)
+        return {'catid': catid, 'samples': checked,
+                'precision': self.category_precision(self.verdicts(), {catid}),
+                'sampling': 'Source candidates, preferring source disagreements; older catalogues restrict checks to training packs. Up to twenty examples.'}
+
+    def set_category_answer(self, body):
+        rel, catid, answer = body.get('path'), body.get('catid'), body.get('answer')
+        if not isinstance(rel, str) or not isinstance(catid, str) or type(answer) is not bool:
+            raise ValueError('Category answers need path, CatID, and a boolean answer')
+        self.file(rel)
+        samples = self.category_check(catid)['samples']
+        sample = next((r for r in samples if r['path'] == rel and r['catid'] == catid), None)
+        if sample is None:
+            raise ValueError('That file is not in this category sample; reload the check')
+        stored = {'answer': answer, 'score': sample.get('score'), 'threshold': sample.get('threshold'),
+                  'target_precision': sample.get('target_precision', .9),
+                  'catalog': sample.get('catalog'), 'checked_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}
+        with self.lock:
+            data = self.verdicts()
+            entry = data.setdefault(rel, {})
+            entry.setdefault('category_answers', {})[catid] = stored
+            self.write_verdicts(data)
+        return {'verdicts': data, 'precision': self.category_precision(data, {catid}), 'saved': stored}
 
     def more_like(self, path=None, avoid=''):
         """Learn from saved judgements, using the CLI's example ranking unchanged."""
@@ -229,11 +311,11 @@ class Library:
 
     def waveform(self, rel):
         with self.visual_lock:
-            return audio_visuals.waveform(self.root, self.file(rel))
+            return audio_visuals.waveform(self.root, self.file(rel), cache_root=self.metadata_root)
 
     def spectrogram(self, rel):
         with self.visual_lock:
-            return audio_visuals.spectrogram(self.root, self.file(rel))
+            return audio_visuals.spectrogram(self.root, self.file(rel), cache_root=self.metadata_root)
 
     def compare(self, paths):
         if not isinstance(paths, list) or not 2 <= len(paths) <= 4 or any(not isinstance(p, str) for p in paths):
@@ -279,14 +361,21 @@ class Library:
     def set_verdict(self, rel, verdict, note):
         with self.lock:
             data = self.verdicts()
+            entry = data.setdefault(rel, {})
             if verdict or note:
-                data[rel] = {'verdict': verdict, 'note': note, 'at': datetime.now().isoformat(timespec='seconds')}
+                entry.update(verdict=verdict, note=note, at=datetime.now().isoformat(timespec='seconds'))
             else:
-                data.pop(rel, None)
-            tmp = self.verdicts_path.with_suffix('.tmp')
-            tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding='utf-8')
-            tmp.replace(self.verdicts_path)
+                for key in ('verdict', 'note', 'at'):
+                    entry.pop(key, None)
+                if not entry:
+                    data.pop(rel, None)
+            self.write_verdicts(data)
         return data
+
+    def write_verdicts(self, data):
+        tmp = self.verdicts_path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding='utf-8')
+        tmp.replace(self.verdicts_path)
 
     def file(self, rel):
         path = (self.root / rel).resolve()
@@ -322,7 +411,11 @@ def handler(lib):
                 elif url.path == '/api/data':
                     self.send_json(lib.payload())
                 elif url.path == '/api/search':
-                    self.send_json(lib.search(q['q']))
+                    self.send_json(lib.search(q['q'], float(q.get('precision', .9))))
+                elif url.path == '/api/categories':
+                    self.send_json(lib.categories())
+                elif url.path == '/api/category-check':
+                    self.send_json(lib.category_check(q.get('catid', ''), int(q.get('n', 20))))
                 elif url.path == '/api/approved':
                     self.send_json(lib.more_like(avoid=q.get('avoid', '')))
                 elif url.path == '/api/like':
@@ -359,6 +452,8 @@ def handler(lib):
                 if self.path == '/api/verdict':
                     lib.file(body['path'])  # only real library files get a verdict
                     self.send_json(lib.set_verdict(body['path'], body.get('verdict', ''), body.get('note', '')))
+                elif self.path == '/api/category-answer':
+                    self.send_json(lib.set_category_answer(body))
                 elif self.path == '/api/export':
                     self.send_json(lib.export(body))
                 elif self.path == '/api/compare':
@@ -440,10 +535,11 @@ def main():
                                      epilog='Example: python scripts/sound_browser.py --root D:/MySounds --port 8790',
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--root', type=Path, required=True, help='library folder holding AUDIO_TAGS.csv')
+    parser.add_argument('--metadata-root',type=Path,help='Writable sidecar folder when the audio library is read-only')
     parser.add_argument('--port', type=int, default=8790, help='first localhost port to try (default: 8790; tries 20 ports)')
     parser.add_argument('--no-open', action='store_true', help='serve without opening a browser window')
     a = parser.parse_args()
-    lib = Library(a.root)
+    lib = Library(a.root,metadata_root=a.metadata_root)
     for port in range(a.port, a.port + 20):  # another local tool may hold the port
         try:
             server = Server(('127.0.0.1', port), handler(lib))

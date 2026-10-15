@@ -30,6 +30,28 @@ provenance visible. A normally tagged library uses CED and CLAP.
 Read [How it works](docs/how-it-works.md) for the evidence behind a result,
 or the [changelog](CHANGELOG.md) for the capability history.
 
+## Search by category
+
+Build a category catalogue, then search for `click`, `UI`, `footstep`, or another
+category word. Category search returns the entire catalogue set, with counts;
+descriptive words such as `short bright` put matching measurements first.
+The UCS tree opens parent categories and their children. **Check this category**
+plays up to 20 uncertain examples; press **Y** or **N** to save category answers
+for the next fit.
+
+~~~bash
+python skills/audio-designer/tagging/recall_tags.py build --root MySounds --prompts
+python skills/audio-designer/scripts/audio_search.py find --root MySounds "short bright click"
+~~~
+
+The catalogue separates calibrated predictions from uncalibrated source
+candidates. Its precision target is tested against noisy filenames on held-out
+packs; it does not establish that every real click was recognized. Sparse or
+underperforming categories keep an explicit unsupported status. See
+[the dated recall tables and tagging guide](docs/tagging.md).
+
+![Complete category search in the generated demo: two filename candidates, with calibration explicitly unavailable](docs/img/category-recall.png)
+
 ## Install
 
 Clone or download [the repository](https://github.com/Youtouch/UltimateAudioPartner).
@@ -379,35 +401,15 @@ Example search uses closeness to approvals and penalises closeness to rejects.
 
 The tagger analyses the **first 60 seconds**, in ten-second windows.
 The fingerprint covers the **first 10 seconds**; short files are padded with
-silence. Full-file tagging was tried and dropped after a pilot found no clear
-quality gain and some worse retrieval, while adding processing and storage
-cost; events later than the cap can therefore be missed.
+silence. Events later than these analysis caps can be missed.
 Full-file duration is still measured for filtering. A fingerprint of an intro
 does not describe a later section.
 
 Descriptors measure samples, not meaning: "punchy" says attack and crest,
 not that a sound suits a punch. Brightness words are relative to your library.
 
-Benchmark numbers are graded by **file names** until humans review the clips.
-That proxy favours name-based methods; it is not listening accuracy.
-See [benchmark methods](skills/audio-designer/bench/README.md).
-
-Measured **2026-10-11**: CED-base was adopted after **59 versus 21 paired
-wins**, McNemar **p < 0.0001**, on 513 filename-sampled clips. These are
-expected-family label hits, not listener judgements.
-
-Short-effect search measured **2026-10-12**, macro AP against filename truth,
-files under 1.5 s (unchanged before/after the unadopted input experiment):
-
-| Split | Files | Name | Audio | Labels | Fused |
-|---|---:|---:|---:|---:|---:|
-| DEV | 11,199 | 0.506 | 0.193 | 0.050 | 0.391 |
-| TEST | 4,883 | 0.364 | 0.078 | 0.009 | 0.272 |
-
-Three queries have no TEST files and six have fewer than ten. Inspect the
-per-query output before interpreting the macro score. The short-input label
-experiment produced 9 new-only versus 10 old-only TEST hits (p = 1.0), so no
-label-input change was adopted.
+Category candidates are uncalibrated. Source agreement and filenames do not
+establish listening precision or recall. See [category search and limits](docs/tagging.md).
 
 The mix gate is an energy gate, not speech recognition. It cannot establish
 intelligibility, fit, biome coherence, source rights or musical taste.
@@ -421,5 +423,7 @@ the [Apache License 2.0](LICENSE). Model licences and attribution are listed in
 [NOTICE](NOTICE). No sounds, private library data or approved production mixes
 are distributed. FFmpeg, PyTorch, Transformers and the other dependencies
 retain their own licences. AudioSet recognition uses CED-base (or optional AST);
-text/audio matching uses LAION CLAP.
+text/audio matching uses LAION CLAP. Category names come from the Universal
+Category System; AudioSet class names identify model outputs, and the AudioSet
+ontology (CC BY-SA 4.0) is not redistributed.
 

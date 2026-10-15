@@ -27,7 +27,7 @@ def contract(html):
 const assert = require('node:assert/strict');
 const esc = s => String(s).replaceAll('"', '&quot;');
 let D={rows:[['a.wav','','',10,0,0,[],[],0]],waveforms:{'a.wav':{peaks:[0,.5,1],duration_s:10}}};
-let current=0, playbackRequest=1, comparison={items:[{path:'a.wav',gain:.25}]}, context=null, gainNode=null;
+let current=0, playbackRequest=1, comparison={items:[{path:'a.wav',gain:.25}]}, context=null, gainNode=null, checkSession=null;
 const elements={'#matchloudness':{checked:true},'#avoid':{value:''},'#comparestrip':{hidden:false}};
 const $=s=>elements[s];
 const document={querySelector:()=>null,querySelectorAll:()=>[]};

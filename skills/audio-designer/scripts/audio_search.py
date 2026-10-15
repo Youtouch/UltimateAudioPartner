@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from library_metadata import read_metadata, relative_path
+from library_metadata import metadata_directory, read_metadata, relative_path
 import audio_describe
 
 DIM = 512
@@ -118,30 +118,35 @@ def stem(w):
 class Index:
     """The library's rows, their audio vectors, name vectors and label scores, loaded once."""
 
-    def __init__(self, root):
+    def __init__(self, root, metadata_root=None):
         self.root = Path(root)
+        self.metadata_root=metadata_directory(root,metadata_root)
         tags = {}
-        with (self.root / 'AUDIO_TAGS.csv').open(encoding='utf-8', newline='') as f:
+        import io
+        tagfile=self.metadata_root/'AUDIO_TAGS.csv'
+        with (tagfile.open(encoding='utf-8',newline='') if tagfile.exists() else io.StringIO('relative_path\n')) as f:
             for r in csv.DictReader(f):
                 tags[relative_path(r['relative_path'])] = r  # last row wins
-        metadata = read_metadata(self.root, tags)
+        metadata = read_metadata(self.root, tags, metadata_root=self.metadata_root)
         packs = {path: row.get('pack', '') for path, row in metadata.items()}
         seconds = {path: float(row.get('duration_seconds') or 0) for path, row in metadata.items()}
-        audio = np.fromfile(self.root / 'AUDIO_TAGS_clap.f32', '<f4')
+        audio = np.fromfile(self.metadata_root / 'AUDIO_TAGS_clap.f32', '<f4') if (self.metadata_root/'AUDIO_TAGS_clap.f32').exists() else np.zeros(0,'<f4')
         audio = audio[:len(audio) // DIM * DIM].reshape(-1, DIM)
         self.paths, self.names, rows = [], [], []
-        for rel, r in tags.items():
-            row = int(r['clap_row']) if r.get('clap_row') else -1
-            if 0 <= row < len(audio):
-                self.paths.append(rel)
-                self.names.append(clean_name(rel, packs.get(rel, '')))
-                rows.append(row)
+        self.status=[]
+        for rel, meta in metadata.items():
+            r=tags.get(rel,{})
+            try:row=int(r.get('clap_row') or -1)
+            except (ValueError,TypeError):row=-1
+            self.paths.append(rel);self.names.append(clean_name(rel,packs.get(rel,'')))
+            rows.append(row if 0<=row<len(audio) else -1)
+            self.status.append(meta.get('recognition_status') or r.get('recognition_status') or ('recognised' if row>=0 else 'not tagged'))
         self.names = drop_pack_constants(self.names, [packs.get(p) or p.split('/')[0] for p in self.paths])
-        self.audio = audio[rows]
+        self.audio = np.stack([audio[row] if row>=0 else np.zeros(DIM,'<f4') for row in rows]) if rows else np.zeros((0,DIM),'<f4')
         self.rows = np.array(rows)  # each file's row in AUDIO_TAGS_clap.f32
-        self.labels = [dict((k, float(v)) for k, v in PAIR.findall(tags[p]['top_labels'])) for p in self.paths]
-        self.silence = np.array([float(tags[p]['silence'] or 0) for p in self.paths])
-        self.label_text = [tags[p]['top_labels'] + ' ' + tags[p].get('timeline', '') for p in self.paths]
+        self.labels = [dict((k, float(v)) for k, v in PAIR.findall(tags.get(p,{}).get('top_labels',''))) for p in self.paths]
+        self.silence = np.array([float(tags.get(p,{}).get('silence') or 0) for p in self.paths])
+        self.label_text = [tags.get(p,{}).get('top_labels','') + ' ' + tags.get(p,{}).get('timeline', '') for p in self.paths]
         self.seconds = np.array([seconds.get(p, 0.0) for p in self.paths])
         descriptors = audio_describe.read_descriptors(self.root)
         self.table = audio_describe.table_for(self.paths, descriptors) if descriptors else None
@@ -165,37 +170,44 @@ class Index:
         from demo_metadata import read_demo
         if read_demo(self.root):
             return np.zeros((len(self.names), DIM), '<f4')
-        cache = self.root / 'AUDIO_NAMES_clap.npz'
+        cache = self.metadata_root / 'AUDIO_NAMES_clap.npz'
         known = {}
         if cache.exists():
             data = np.load(cache, allow_pickle=False)
             known = dict(zip(data['names'].tolist(), data['vectors']))
-        missing = sorted({n for n in self.names if n not in known})
+        if not np.any(self.rows>=0):return np.zeros((len(self.names),DIM),'<f4')
+        missing = sorted({n for i,n in enumerate(self.names) if self.rows[i]>=0 and n not in known})
         if missing:
             from audio_tag import embed_text
             for i in range(0, len(missing), 256):
                 for n, v in zip(missing[i:i + 256], embed_text([n or 'unnamed sound' for n in missing[i:i + 256]])):
                     known[n] = v
             names = sorted(known)
-            np.savez(cache, names=np.array(names), vectors=np.stack([known[n] for n in names]).astype('<f4'))
-        return np.stack([known[n] for n in self.names]) if self.names else np.zeros((0, DIM), '<f4')
+            try:np.savez(cache, names=np.array(names), vectors=np.stack([known[n] for n in names]).astype('<f4'))
+            except PermissionError:pass  # In-memory name search remains usable on read-only libraries.
+        return np.stack([known.get(n,np.zeros(DIM,'<f4')) for n in self.names]) if self.names else np.zeros((0, DIM), '<f4')
 
     def sources(self, query):
         """Each source's score for every file, kept apart, plus each source's weight for this query."""
         from demo_metadata import read_demo, name_sources
         if read_demo(self.root):
             return name_sources(self, query, words, stem)
+        if not np.any(self.rows>=0):
+            wanted={stem(w) for w in words(query)}
+            score=np.array([float(len(wanted & {stem(w) for w in words(n)})) for n in self.names])
+            return {'name':np.where(score>0,score,-np.inf)},{},{'name':1.}
         from audio_tag import embed_text, tagger
         main = head(query)
         q = embed_text([query, f'the sound of {query}', main])
         q_audio = q[:2].mean(0) / np.linalg.norm(q[:2].mean(0))
-        audio = self.audio @ q_audio
+        audio = np.where(self.rows>=0,self.audio @ q_audio,-np.inf)
         # name: the sound word counts most ("click" in "a single soft wooden click"); describing words refine.
         main_stem = stem(main)
         others = {stem(w) for w in words(query) if len(w) > 2} - {main_stem}
         name_stems = [{stem(w) for w in n.split()} for n in self.names]
         name = (0.5 * (self.name_vectors @ q[0]) + 0.5 * (self.name_vectors @ q[2])
                 + np.array([0.3 * (main_stem in s) + 0.05 * len(others & s) for s in name_stems]))
+        name=np.where((self.rows>=0)|(name>0),name,-np.inf)
         # label: AudioSet labels that name the sound word outright; failing that, the nearest by meaning, at half weight
         label_names = list(tagger()[1].config.id2label.values())
         direct = {n: 1.0 for n in label_matches(main_stem, label_names)}
@@ -253,10 +265,49 @@ class Index:
             fused = np.where(match, fused_m, fused)
             best = passing + [i for i in best if not match[i]]
         return [{'path': self.paths[i], 'row': int(self.rows[i]), 'score': round(float(fused[i]) * 100, 3), 'name': self.names[i],
-                 'words': self.words(i), 'matches_words': None if match is None else bool(match[i]),
+                 'recognition_status':getattr(self,'status',['recognised']*len(self.paths))[i], 'words': self.words(i), 'matches_words': None if match is None else bool(match[i]),
                  'evidence': {src: {'rank': int(ranks[src][i]) + 1 if ranks[src][i] >= 0 else None,
-                                    'score': round(float(scores[src][i]), 3)} for src in scores}}
+                                    'score': round(float(scores[src][i]), 3) if np.isfinite(scores[src][i]) else None} for src in scores}}
                 for i in best[:top]], wanted
+
+
+def category_search(root, query, precision=.9):
+    """Return the entire uncalibrated source category set, or None for a descriptive ranked query.
+
+    This path never creates a name cache or loads a text model. Plain measured words reorder
+    the category set; they do not remove category members or change its calibration claim.
+    """
+    import sys
+    tagging = str(Path(__file__).resolve().parent.parent / 'tagging')
+    if tagging not in sys.path:
+        sys.path.insert(0, tagging)
+    import recall_tags
+    import ucs
+    resolved = ucs.resolve_query(query, aliases=ucs.read_aliases(root))
+    if not resolved.get('catids'):
+        return None
+    data = recall_tags.query_catalog(root, query, precision=precision)
+    if data is None or ('catalog' in data and data['catalog'] is None):
+        return None
+    data = dict(data)
+    results = [dict(row) for row in data.get('results', [])]
+    descriptors = audio_describe.read_descriptors(Path(root))
+    remaining = resolved.get('remaining_query', '')
+    sound, filters = audio_describe.split_query(remaining) if descriptors else (remaining, [])
+    if descriptors and filters and results:
+        table = audio_describe.table_for([r['path'] for r in results], descriptors)
+        matches = np.ones(len(results), bool)
+        for word in filters:
+            matches &= audio_describe.word_mask(word, table)
+        for i, row in enumerate(results):
+            row['matches_words'] = bool(matches[i])
+            row['words'] = audio_describe.words_for(table, i)
+        results.sort(key=lambda r: not r['matches_words'])
+    data.update(results=results, filters=filters, sound=resolved.get('label', query),
+                matching=sum(bool(r.get('matches_words')) for r in results), mode='category')
+    data.setdefault('coverage', {})['remaining_query'] = sound
+    data['coverage']['measured_words'] = 'Matching measurements listed first; every category member remains included.'
+    return data
 
 
 def like_score(approved, rejected):
@@ -413,7 +464,8 @@ def main():
     )
     f.add_argument('query', help='text description of the wanted sound')
     f.add_argument('--root', type=Path, required=True, help='folder containing the audio library')
-    f.add_argument('--top', type=int, default=20, help='maximum number of results to return')
+    f.add_argument('--top', type=int, default=20, help='maximum ranked descriptive matches; category searches return all members')
+    f.add_argument('--precision', type=float, default=.9, choices=(.8, .9), help='display target only; category candidates remain uncalibrated')
     k = sub.add_parser(
         'like',
         help='sounds like the approved examples, unlike the rejected ones',
@@ -437,6 +489,10 @@ def main():
     a = parser.parse_args()
     if a.cmd == 'check':
         return check()
+    if a.cmd == 'find':
+        category = category_search(a.root, a.query, a.precision)
+        if category is not None:
+            return print(json.dumps(category, indent=1))
     index = Index(a.root)
     if a.cmd == 'names':
         return print(f'{len(index.names)} names embedded, cache at {a.root / "AUDIO_NAMES_clap.npz"}')

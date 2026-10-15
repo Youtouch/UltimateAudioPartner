@@ -2,6 +2,8 @@
 
 Run with python tools/publication_tests.py. No library, models or Git are used.
 """
+import ast
+import json
 import contextlib
 import io
 from pathlib import Path
@@ -36,6 +38,8 @@ def source_fixture(root):
         'scripts/unlisted_helper.py': '# unlisted private helper\n',
         'references/personal.md': 'Private reference.\n',
         'bench/unlisted.py': '# private experiment\n',
+        'bench/recall.py': '# research\n',
+        'scripts/recall_embeddings.py': '# research sweep\n',
         'tagging/unlisted.py': '# private experiment\n',
         'mix/REPORT.md': 'Private mix report.\n',
         'render/report.txt': 'Private render report.\n',
@@ -53,8 +57,19 @@ def public_copy_contract(copy=sync.copy_skill):
         destination = root / 'published'
         copy(source, destination)
         actual = {path.relative_to(destination).as_posix() for path in destination.rglob('*') if path.is_file()}
-        expected = {'SKILL.md', 'scripts/audio_map.py', 'references/mix-plan.md', 'bench/README.md'}
+        expected = {'SKILL.md', 'scripts/audio_map.py', 'references/mix-plan.md'}
         assert actual == expected, f'Publication allowlist leaked or omitted files: {sorted(actual ^ expected)}'
+
+
+def runtime_separation_contract():
+    source=Path(__file__).resolve().parents[1]/'skills/audio-designer'
+    if not source.exists():return
+    assert not (source/'bench').exists(), 'Research bench published'
+    bundle=json.loads((source/'tagging/ucs_mapping.json').read_text(encoding='utf-8'))
+    assert 'audioset_ontology' not in bundle and 'ced_display_labels' not in bundle
+    tree=ast.parse((source/'tagging/recall_tags.py').read_text(encoding='utf-8'))
+    forbidden={'fit_probe','frozen_adoption','calibration_threshold','partition','weak_truth'}
+    assert not ({n.name for n in ast.walk(tree) if isinstance(n,ast.FunctionDef)} & forbidden)
 
 
 def privacy_contract(check=sync.privacy_check):
@@ -238,6 +253,7 @@ def main():
         raise RuntimeError('Self-tests require asserts: do not use python -O')
     tests = [
         ('renamed-source publication allowlist', public_copy_contract),
+        ('runtime has no bundled ontology or research fitting', runtime_separation_contract),
         ('case-insensitive privacy blockers and safe diagnostics', privacy_contract),
         ('only named public screenshots and changelog are copied', screenshot_copy_contract),
         ('PNG pixels stay binary and text metadata is privacy checked', png_privacy_contract),

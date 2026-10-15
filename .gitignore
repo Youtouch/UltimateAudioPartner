@@ -17,23 +17,33 @@ AUDIO_NAMES*
 AUDIO_DESCRIPTORS*
 AUDIO_GROUPS*
 AUDIO_VISUALS*/
+AUDIO_RECALL*
+AUDIO_CATEGORY_ALIASES.json
+.uap-recall-*.tmp
+# Local research scratch: downloaded reference material and working copies
+.uap_work/
 UAP_DEMO.json
 *.npz
-# Benchmark data is drawn from your own library: only the bench tools are published
-skills/audio-designer/bench/*
-!skills/audio-designer/bench/*.py
-!skills/audio-designer/bench/README.md
-!skills/audio-designer/bench/vocabulary.csv
-!skills/audio-designer/bench/queries.csv
+# Research stays local, including all benchmark tools
+skills/audio-designer/bench/
+skills/audio-designer/scripts/recall_embeddings.py
+skills/audio-designer/scripts/recall_embedding_tests.py
+skills/audio-designer/scripts/recall_browser_tests.py
 skills/audio-designer/tagging/*
 !skills/audio-designer/tagging/vocab_tags.py
 !skills/audio-designer/tagging/self_tests.py
 !skills/audio-designer/tagging/vocabulary_synonyms.csv
+!skills/audio-designer/tagging/vocabulary.csv
 !skills/audio-designer/tagging/label_rules.py
 !skills/audio-designer/tagging/label_self_tests.py
 !skills/audio-designer/tagging/label_decisions_v2.json
 !skills/audio-designer/tagging/label_decisions_v3.json
 !skills/audio-designer/tagging/game_vocab.py
+!skills/audio-designer/tagging/ucs.py
+!skills/audio-designer/tagging/ucs_mapping.json
+!skills/audio-designer/tagging/ucs_tests.py
+!skills/audio-designer/tagging/recall_tags.py
+!skills/audio-designer/tagging/recall_tests.py
 AUDIO_VOCAB*
 AUDIO_TAG_REVIEW*
 AUDIO_AMBIENCE_INDEX*
@@ -66,3 +76,7 @@ tools/private_words.txt
 skills/audio-designer/mix/REPORT.md
 skills/audio-designer/render/demo/
 skills/audio-designer/render/REPORT.md
+
+# Local method trial reports
+UAP_*REPORT.md
+UAP_*DATA.json

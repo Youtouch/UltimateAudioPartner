@@ -27,10 +27,11 @@ def _source(root, path):
     return root, path
 
 
-def cache_path(root, path):
+def cache_path(root, path, cache_root=None):
     root, path = _source(root, path)
-    folder = root / CACHE
-    if not folder.resolve().is_relative_to(root):
+    destination=Path(cache_root).resolve() if cache_root else root
+    folder = destination / CACHE
+    if not folder.resolve().is_relative_to(destination):
         raise ValueError('The visual cache must stay inside the library')
     name = hashlib.sha256(path.relative_to(root).as_posix().encode('utf-8')).hexdigest()
     return folder / (name + '.json')
@@ -169,9 +170,9 @@ def _analyse(path):
             'match_lufs': round(loudness, 6) if loudness is not None else None, 'match_basis': basis}
 
 
-def waveform(root, path):
+def waveform(root, path, cache_root=None):
     root, path = _source(root, path)
-    cache = cache_path(root, path)
+    cache = cache_path(root, path, cache_root=cache_root)
     stamp = _stamp(path)
     try:
         old = json.loads(cache.read_text(encoding='utf-8'))
@@ -235,10 +236,10 @@ def _rgb_png(rgb):
     return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(rows, 9)) + chunk(b'IEND', b'')
 
 
-def spectrogram(root, path):
+def spectrogram(root, path, cache_root=None):
     root, path = _source(root, path)
-    waveform(root, path)  # invalidate both visual products when the audio changes
-    cache = cache_path(root, path)
+    waveform(root, path, cache_root=cache_root)  # invalidate both visual products when the audio changes
+    cache = cache_path(root, path, cache_root=cache_root)
     image, stampfile = cache.with_suffix('.png'), cache.with_suffix('.png.stamp')
     stamp = _stamp(path)
     try:

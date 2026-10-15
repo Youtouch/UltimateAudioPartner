@@ -71,14 +71,6 @@ puts the files that are short, punchy and bright first (marked as matching), and
 lists the rest after them. Without `AUDIO_DESCRIPTORS.csv` the words stay in the
 search text, as before.
 
-Measured cost, on the 252-clip benchmark (PROXY, truth from file names): macro AP
-DEV 0.415 → 0.417, TEST 0.365 → 0.344. The losses are queries whose name-based
-truth ignores the adjective ("a single water drop", "a short heavy impact"); the
-gains are queries where it agrees ("a long environmental ambience bed" 0.371 →
-0.466). A first version that dropped non-matching files, with everyday aliases
-(quick, gentle, subtle, crisp...), cost TEST 0.365 → 0.333 and emptied "a single
-soft wooden click": hence matches-first and few aliases.
-
 **To change a word**, edit its row: a threshold, a measure or a new alias. A
 percentile measure ends in `_pct` and is computed when the library is read, so
 it needs no new pass. A new measure needs a column in `FIELDS`, a line in
@@ -87,7 +79,5 @@ file is measured again.
 
 ## Cost
 
-Measured on a 16-thread desktop CPU, one thread per worker: about 0.2 s for a
-sub-second effect and 1.7 s for a 100 s stereo music file, dominated by decoding,
-K-weighting the whole file and the 30 s spectral analysis. The pass starts up to
-eight workers (fewer for small libraries); `--workers` sets the number.
+Decoding, K-weighting and spectral analysis dominate the pass. Cost varies with
+file length, format and hardware; `--workers` sets the parallel worker count.

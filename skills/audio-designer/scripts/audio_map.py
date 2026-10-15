@@ -48,9 +48,37 @@ def probe(path):
     return json.loads(result.stdout)
 
 
+def mono_samples(y):
+    """Average channels, preserving an audible channel when opposing phases cancel."""
+    if y.ndim==1:return y
+    mono=y.mean(axis=1)
+    if y.shape[1]>1 and len(y):
+        powers=np.einsum('ij,ij->j',y,y,dtype=np.float64)/len(y)
+        if powers.max()>0 and np.einsum('i,i->',mono,mono,dtype=np.float64)/len(mono)<1e-4*powers.max():
+            mono=y[:,int(np.argmax(powers))]
+    return mono
+
+
 def load_audio(path, seconds=None, sample_rate=None, mono=False, start=0):
     """Share decoding between music mapping and ambience measurements."""
     import soundfile as sf
+
+    if Path(path).suffix.lower()=='.wav':
+        import struct
+        size=Path(path).stat().st_size
+        with Path(path).open('rb') as stream:
+            header=stream.read(12)
+            if header[:4]==b'RIFF' and header[8:12]==b'WAVE':
+                offset=12
+                while offset+8<=size:
+                    stream.seek(offset);kind,length=struct.unpack('<4sI',stream.read(8))
+                    end=offset+8+length
+                    if kind==b'data' and end>size:
+                        raise ValueError('unreadable: truncated WAV audio data')
+                    # Some publishers misstate RIFF length or omit trailing metadata.
+                    # Complete audio remains readable; missing audio bytes do not.
+                    if end>size:break
+                    offset=end+(length&1)
 
     try:
         with sf.SoundFile(path) as source:
@@ -63,14 +91,14 @@ def load_audio(path, seconds=None, sample_rate=None, mono=False, start=0):
     except (sf.LibsndfileError, ValueError):
         meta = next(s for s in probe(path)["streams"] if s["codec_type"] == "audio")
         sr = sample_rate or int(meta["sample_rate"])
-        channels = 1 if mono else int(meta["channels"])
+        channels = int(meta["channels"])
         cmd = [media_tool(), "-v", "error", "-threads", "1", "-ss", str(start), "-i", str(path), "-vn"]
         if seconds is not None:
             cmd += ["-t", str(seconds)]
         result = subprocess.run(cmd + ["-ac", str(channels), "-ar", str(sr), "-f", "f32le", "pipe:1"],
                                 check=True, capture_output=True)
         y = np.frombuffer(result.stdout, dtype="<f4").reshape(-1, channels)
-    return (y.mean(axis=1) if mono else y), sr
+    return (mono_samples(y) if mono else y), sr
 
 
 def loudness(path, seconds=None):

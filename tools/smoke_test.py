@@ -153,8 +153,9 @@ def exercise(copy, root, expected, corrupt, env, results):
         print(f'INFO tagging {len(expected)} readable files: {timings["tag_seconds"]:.2f} s '
               f'({timings["tag_seconds"] / len(expected):.3f} s/file, startup included)', flush=True)
         rows = {r['relative_path']: r for r in read_csv(root / 'AUDIO_TAGS.csv')}
-        assert set(rows) == set(expected), f'tagged {len(rows)}, expected {len(expected)}'
-        assert all(r.get('clap_row') and r.get('tagger') for r in rows.values()), 'missing fingerprints/tagger'
+        assert set(rows) == set(expected)|{corrupt}, f'rows {len(rows)}, expected readable files plus explicit corrupt row'
+        assert rows[corrupt]['recognition_status']=='unreadable' and rows[corrupt]['clap_row']=='-1' and not rows[corrupt]['top_labels']
+        assert all(r.get('clap_row') and r.get('tagger') for p,r in rows.items() if p!=corrupt), 'missing fingerprints/tagger'
         skipped = read_csv(root / 'AUDIO_TAGS_skipped.csv')
         assert len(skipped) == 1 and skipped[0]['relative_path'] == corrupt, skipped
         assert skipped[0].get('reason'), 'corrupt file has no skip reason'
@@ -166,7 +167,7 @@ def exercise(copy, root, expected, corrupt, env, results):
             assert abs(float(ledger[path]['duration_seconds']) - seconds) < .1, (path, ledger[path])
             assert ledger[path]['pack'] == path.split('/')[0], ledger[path]
         resume = command([scripts / 'audio_tag.py', 'tag', '--root', root, '--out', root / 'AUDIO_TAGS.csv'], copy, env)
-        assert len(read_csv(root / 'AUDIO_TAGS.csv')) == len(expected), 'resume duplicated unchanged tags'
+        assert len(read_csv(root / 'AUDIO_TAGS.csv')) == len(expected)+1, 'resume duplicated unchanged tags'
         assert corrupt in (resume.stdout + resume.stderr), 'corrupt file lost on resumed pass'
 
     step('tag + complete ledger + corrupt summary + resume', tag)

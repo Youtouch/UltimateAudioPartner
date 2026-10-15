@@ -2,6 +2,7 @@
 
 Example: python tools/demo_tests.py
 """
+import argparse
 import csv
 import importlib.util
 import json
@@ -21,12 +22,12 @@ def read_csv(path):
         return list(csv.DictReader(stream))
 
 
-def contract(root, source):
+def contract(root, source, skill=None):
     assert (source / 'tools/demo.py').is_file(), 'missing first-run demo command'
     spec = importlib.util.spec_from_file_location('uap_demo', source / 'tools/demo.py')
     demo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(demo)
-    skill = demo.skill_source(source)
+    skill = skill or demo.skill_source(source)
     sys.path.insert(0, str(skill / 'scripts'))
     import audio_tag
     import audio_search
@@ -56,6 +57,27 @@ def contract(root, source):
         found, _ = index.find('short bright click', top=20)
         assert found and any('click' in r['path'].lower() for r in found[:4]), found
         assert all(set(r['evidence']) == {'name'} for r in found), 'demo search claimed model evidence'
+        sys.path.insert(0, str(skill / 'tagging'))
+        import recall_tags
+        recall = recall_tags.load_catalog(library)
+        assert recall is not None, 'demo recall catalog missing'
+        assert recall[0]['prompt_info']['available'] is False, 'synthetic spectra used semantic CLAP prompts'
+        category = audio_search.category_search(library, 'short bright click')
+        assert category and category['counts']['total'] == 2, 'demo category omitted generated click candidates'
+        assert category['coverage']['calibrated'] is False, 'toy demo claimed supported calibration'
+        assert all(r['sources'] == ['name'] and r['confidence'] == 'likely' and r['calibrated'] is False
+                   for r in category['results']), 'demo category claimed model recognition or source agreement'
+        assert category['matching'] == 1 and len(category['results']) == 2, 'measured words truncated category membership'
+        assert 'uncalibrated' in marker['search'] and 'cannot support precision' in marker['search'], marker
+        # The check rejects the old demo's missing catalog, without regenerating audio or mutating live code.
+        manifest_path = library / recall[2]
+        hidden = manifest_path.with_suffix('.hidden')
+        manifest_path.rename(hidden)
+        try:
+            assert recall_tags.load_catalog(library) is None, 'missing-catalog regression was not detected'
+            assert audio_search.category_search(library, 'click') is None, 'missing catalog did not restore legacy search'
+        finally:
+            hidden.rename(manifest_path)
         similar = index.audio @ index.audio[0]
         assert len(similar) == len(tags) and abs(float(similar[0]) - 1) < 1e-5
         # A normal library still takes the existing model path. A marker must never change other roots.
@@ -69,6 +91,7 @@ def contract(root, source):
             else:
                 raise AssertionError('demo fallback escaped its marked synthetic library')
     print('PASS demo: smoke generator + four game effects, complete measurements, offline name search, single-source provenance')
+    print('PASS demo recall: immutable catalog, two complete click candidates, unsupported calibration, no model evidence; missing catalog rejected')
 
 
 def launcher_contract(source):
@@ -122,8 +145,11 @@ def launcher_contract(source):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0], epilog='Example: python tools/demo_tests.py')
+    parser.add_argument('--from', dest='skill', type=Path, help='explicit skill source for a maintainer checkout')
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='uap-demo-tests-') as temporary:
-        contract(Path(temporary), REPO)
+        contract(Path(temporary), REPO, args.skill)
     launcher_contract(REPO)
     return 0
 

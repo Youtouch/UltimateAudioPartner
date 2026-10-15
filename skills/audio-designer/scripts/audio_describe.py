@@ -21,10 +21,10 @@ from pathlib import Path
 
 import numpy as np
 
-from audio_map import load_audio
+from audio_map import load_audio, mono_samples
 from library_metadata import relative_path
 
-VERSION = 'v1'  # bump when a measure changes: rows written by another version are measured again
+VERSION = 'v2'  # bump when a measure changes: rows written by another version are measured again
 FIELDS = ['relative_path', 'size_bytes', 'mtime_ns', 'duration_s', 'lead_silence_s', 'tail_silence_s', 'sound_s',
           'analysed_s', 'channels', 'sample_rate', 'true_peak_dbtp', 'sample_peak_dbfs', 'crest_db', 'lufs_integrated',
           'lufs_short_max', 'lufs_momentary_max', 'attack_ms', 'decay_ms', 'centroid_hz', 'rolloff_hz', 'flatness',
@@ -393,7 +393,7 @@ def measure(y, sr, duration=None, tail=None):
     its head (files over MAX_DECODE_S). Values that do not apply are None."""
     y = y if y.ndim == 2 else y[:, None]
     duration = len(y) / sr if duration is None else duration
-    mono = y.mean(axis=1)
+    mono = mono_samples(y)
     sample_peak = float(np.abs(y).max()) if len(y) else 0.0
     out = dict.fromkeys(FIELDS[3:-1])
     out.update(duration_s=round(duration, 4), channels=y.shape[1], sample_rate=sr, analysed_s=round(len(y) / sr, 3),

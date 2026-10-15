@@ -1,4 +1,4 @@
-"""Capture five real demo browser screens using an installed headless Microsoft Edge."""
+"""Capture six real demo browser screens using an installed headless Microsoft Edge."""
 import argparse
 import json
 import os
@@ -40,11 +40,13 @@ assert.equal(await evaluate("filtered.length"),4);
 assert.equal(await evaluate("document.querySelectorAll('.item [data-wave-path]').length"),4);
 assert.equal(await evaluate("$('#demobanner').hidden"),false);
 await evaluate("$('#describe').value='short bright click';$('#go').click()");
-await waitFor("scores !== null && document.querySelectorAll('.item').length > 0 && document.querySelector('.ev')?.textContent.includes('name')");
+await waitFor("categoryResult !== null && document.querySelectorAll('.item').length > 0 && $('#categorysummary').textContent.includes('2')");
 assert.deepEqual(errors,[]);
-await evaluate("$('#clearscore').click();$('#describe').value=''");
 const evidence=[];
 const shot=async(name,check)=>{await waitFor(check);await waitFor("!$('#toast').classList.contains('show')");await new Promise(r=>setTimeout(r,250));const p=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(out+'/'+name+'.png',Buffer.from(p.data,'base64'));evidence.push({file:name+'.png',url:base,assertion:check});console.log('PASS real UI screenshot '+name);};
+await evaluate("$('#pack').value='';apply();document.querySelectorAll('#categorytree details').forEach(d=>{if(d.textContent.includes('USER INTERFACE')){d.open=true;d.scrollIntoView({block:'center'})}})");
+await shot('category-recall',"categoryResult.counts.total === 2 && categoryResult.results.every(r=>!r.calibrated && !r.stale) && categoryResult.coverage.stale === false && !$('#categorycoverage').textContent.includes('out of date') && document.querySelectorAll('.item').length === 2");
+await evaluate("$('#clearscore').click();$('#describe').value='';$('#pack').value='Game SFX';apply()");
 await shot('library',"document.querySelectorAll('.item .chip').length > 4");
 await evaluate("play(D.rows.findIndex(r=>r[0].includes('laser_sweep')))");
 await waitFor("$('#spectrogram').complete && $('#spectrogram').naturalWidth > 0 && $('#detailnumbers').children.length >= 4");
@@ -67,7 +69,7 @@ assert.equal(await evaluate("gainNode.gain.value"),1);
 await evaluate("audio.pause();$('#matchloudness').checked=true;$('#matchloudness').dispatchEvent(new Event('change'));$('#closecompare').click();$('#closedetail').click();$('#exportbtn').click();$('#exportout').value='C:/MyGame/Assets/Audio/SFX'");
 await shot('export',"$('#exportdlg').open && $('#exportcount').textContent.includes('3')");
 assert.deepEqual(errors,[]);
-fs.writeFileSync(out+'/capture-evidence.json',JSON.stringify({engine:'Microsoft Edge headless / DevTools Protocol',synthetic:true,screenshots:evidence,checks:['real UI loaded','four cached row envelopes','spectrogram decoded','click seeks to half duration','comparison applies measured gain','toggle returns to unity','no JavaScript exceptions']},null,2));
+fs.writeFileSync(out+'/capture-evidence.json',JSON.stringify({engine:'Microsoft Edge headless / DevTools Protocol',synthetic:true,screenshots:evidence,checks:['real UI loaded','four cached row envelopes','complete category count with two generated clicks','current recall source stamps and no stale evidence','unsupported toy precision labelled uncalibrated','spectrogram decoded','click seeks to half duration','comparison applies measured gain','toggle returns to unity','no JavaScript exceptions']},null,2));
 ws.close();
 '''
 

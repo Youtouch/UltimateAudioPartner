@@ -14,21 +14,20 @@ import sys
 import tempfile
 import zlib
 
-PUBLISH_TAGGING = {'vocab_tags.py', 'self_tests.py', 'label_rules.py', 'label_self_tests.py', 'label_decisions_v2.json',
-                   'label_decisions_v3.json', 'game_vocab.py', 'vocabulary_synonyms.csv'}
+PUBLISH_TAGGING = {'ucs.py', 'ucs_mapping.json', 'ucs_tests.py', 'recall_tags.py', 'recall_tests.py', 'vocab_tags.py', 'self_tests.py', 'label_rules.py', 'label_self_tests.py', 'label_decisions_v2.json',
+                   'label_decisions_v3.json', 'game_vocab.py', 'vocabulary_synonyms.csv', 'vocabulary.csv'}
 PUBLISH_RENDER = {'render_mix.py', 'render_tests.py', 'README.md'}
 PUBLISH_MIX = {'mix_check.py', 'calibration_tests.py', 'README.md'}
-PUBLISH_BENCH = {'bench_select.py', 'bench_eval.py', 'bench_clap.py', 'methods.py', 'tagger_trial.py', 'short_sfx.py', 'README.md',
-                 'vocabulary.csv', 'queries.csv'}
-PUBLISH_ROOT = {'SKILL.md', 'references', 'scripts', 'bench', 'tagging', 'mix', 'render'}
-PUBLISH_SCRIPTS = {'audio_tag.py', 'audio_map.py', 'audio_index.py', 'audio_search.py',
+PUBLISH_BENCH = set()
+PUBLISH_ROOT = {'SKILL.md', 'references', 'scripts', 'tagging', 'mix', 'render'}
+PUBLISH_SCRIPTS = {'any_file_tests.py', 'audio_tag.py', 'audio_map.py', 'audio_index.py', 'audio_search.py',
                    'sound_browser.py', 'sound_browser.html', 'library_metadata.py',
                    'library_tests.py', 'browser_tests.py', 'audio_describe.py', 'sfx_groups.py', 'export_sfx.py',
                    'audio_visuals.py', 'visual_tests.py', 'demo_metadata.py'}
 PUBLISH_REFERENCES = {'mix-plan.md', 'music-and-beats.md', 'recognise-and-select.md', 'sound-without-hearing.md'}
 REPO_FILES = {'README.md', 'CHANGELOG.md', 'NOTICE', 'LICENSE', 'requirements.txt', '.gitignore',
               'Tag Library.bat', 'Sound Browser.bat', 'tag-library.sh', 'sound-browser.sh'}
-PUBLISH_IMAGES = {'library.png', 'sound-detail.png', 'explain.png', 'compare.png', 'export.png'}
+PUBLISH_IMAGES = {'library.png', 'sound-detail.png', 'explain.png', 'compare.png', 'export.png', 'category-recall.png'}
 PUBLISH_SCREENSHOT_FILES = PUBLISH_IMAGES | {'capture-evidence.json'}
 
 

@@ -10,3 +10,39 @@ Models downloaded at runtime (not distributed with this repository):
 Each is fetched from Hugging Face under its own licence on first use.
 Sizes are rounded decimal MB from the locally cached checkpoints; configuration,
 tokenizer files and Python dependencies are additional. CED plus CLAP need roughly 1 GB.
+The default CED tagger pins its audited implementation to revision
+db3e14a8db4c21b56b165261c39649741a900e7f. Models and their
+configuration files remain in the user cache, under their respective licences.
+
+Universal Category System (UCS) taxonomy:
+- UCS v8.2.1, 753 subcategories in 82 categories, retrieved 12 October 2026
+  from https://universalcategorysystem.com/ through its official resource link,
+  https://resources.universalcategorysystem.com/.
+- The official UCS homepage describes UCS as "a public domain initiative";
+  it publishes no separate licence text. The list is reproduced on that basis.
+  Attribution: Universal Category System, its creators and contributors
+  (Tim Nielsen, Justin Drury, Kai Paquin and others).
+- The bundled ucs_mapping.json preserves official category/subcategory names,
+  CatIDs, category abbreviations, explanations and synonyms. The downloaded
+  source spreadsheet SHA-256 is recorded in that file.
+- One book synonym is excluded by the publication privacy filter; the normalized
+  data records this omission and retains every category identity.
+- AudioSet correspondences, legacy aliases and CLAP prompts are authored by
+  Ultimate Audio Partner; they are not part of the official UCS list.
+  Empty AudioSet mappings are explicitly unsupported, not invented labels.
+
+AudioSet:
+- CED and AST report the 527 AudioSet classes. Individual class names appear in
+  this repository as identifiers for those model outputs.
+- The AudioSet ontology is by Google LLC, licensed under Creative Commons
+  Attribution-ShareAlike 4.0 International (CC BY-SA 4.0):
+  https://research.google.com/audioset/ontology/index.html
+  The ontology itself (hierarchy and descriptions) is not distributed here and
+  is not covered by this repository's Apache-2.0 licence.
+
+Dependencies (installed by the user, not distributed with this repository):
+- numpy (BSD-3-Clause), scipy (BSD-3-Clause), soundfile (BSD-3-Clause; its
+  wheels bundle libsndfile, LGPL-2.1-or-later), librosa (ISC), torch
+  (BSD-3-Clause), torchaudio (BSD-2-Clause), transformers (Apache-2.0).
+- FFmpeg and ffprobe are separate programs under LGPL or GPL depending on the
+  build. Check the build's licence before redistributing it with a product.

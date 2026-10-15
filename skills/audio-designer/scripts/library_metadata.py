@@ -6,9 +6,32 @@ import sys
 import tempfile
 from pathlib import Path
 
+AUDIO_EXTENSIONS = {'.wav','.mp3','.ogg','.flac','.aif','.aiff','.m4a','.aac','.opus','.mp4','.mov'}
 LEDGER_NAME = 'AUDIO_LEDGER_files.csv'
 LEDGER_FIELDS = ['relative_path', 'pack', 'duration_seconds', 'sample_rate', 'channels', 'size_bytes', 'mtime_ns']
 _missing_ledger_noted = set()
+
+
+def metadata_directory(root, explicit=None, create=False):
+    """Use external sidecars automatically when a library refuses writes."""
+    import hashlib
+    root=Path(root).resolve()
+    if explicit is not None:return Path(explicit).resolve()
+    base=Path(os.environ.get('UAP_CACHE_ROOT') or
+              Path(os.environ.get('LOCALAPPDATA',Path.home()/'.cache'))/'UltimateAudioPartner')
+    cache=base/'libraries'/hashlib.sha256(str(root).casefold().encode('utf-8')).hexdigest()[:24]
+    if (cache/'AUDIO_TAGS.csv').exists():return cache
+    if not create:return root
+    try:
+        import uuid
+        probe=root/('.uap-write-'+uuid.uuid4().hex)
+        descriptor=os.open(probe,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        os.close(descriptor);probe.unlink()
+        return root
+    except PermissionError:
+        cache.mkdir(parents=True,exist_ok=True)
+        print(f'NOTE library is read-only; metadata will be saved in {cache}',file=sys.stderr,flush=True)
+        return cache
 
 
 def relative_path(value):
@@ -36,12 +59,20 @@ def tag_metadata(tags):
             for path, row in tags.items()}
 
 
-def read_metadata(root, tags):
+def read_metadata(root, tags, metadata_root=None):
     """Merge ledger rows over tag metadata. A missing ledger is reported once per root/process."""
     result = tag_metadata(tags)
-    ledger = Path(root) / LEDGER_NAME
+    ledger = Path(metadata_root or root) / LEDGER_NAME
     if not ledger.exists():
         note_missing_ledger(root)
+        for path in Path(root).rglob('*'):
+            if not path.is_file() or path.suffix.lower() not in AUDIO_EXTENSIONS:continue
+            rel=path.relative_to(root).as_posix()
+            if rel in result:continue
+            row={'relative_path':rel,'pack':pack_from_path(rel),'recognition_status':'not tagged'}
+            try:row.update(measure_metadata(path))
+            except Exception as exc:row.update(recognition_status='unreadable',error=str(exc))
+            result[rel]=row
         return result
     with ledger.open(encoding='utf-8-sig', newline='') as source:
         for row in csv.DictReader(source):
@@ -49,6 +80,22 @@ def read_metadata(root, tags):
             result[path] = {**result.get(path, {'relative_path': path, 'pack': pack_from_path(path)}),
                             **{key: value for key, value in row.items() if value not in ('', None)},
                             'relative_path': path}
+    # Older passes left unreadable files only in the ledger. Probe untagged rows with
+    # no duration so those failures are explicit without changing protected sidecars.
+    for rel,row in result.items():
+        if rel not in tags and not row.get('duration_seconds') and not row.get('recognition_status'):
+            try:
+                from audio_map import load_audio
+                samples,_=load_audio(Path(root)/rel,seconds=.05,sample_rate=16000,mono=True)
+                if not len(samples):raise ValueError('unreadable: no decoded samples')
+                row.update(measure_metadata(Path(root)/rel),recognition_status='not tagged')
+            except Exception as exc:row.update(recognition_status='unreadable',error=str(exc))
+    skipped=Path(metadata_root or root)/'AUDIO_TAGS_skipped.csv'
+    if skipped.exists():
+        with skipped.open(encoding='utf-8-sig',newline='') as stream:
+            for row in csv.DictReader(stream):
+                rel=relative_path(row['relative_path']);result.setdefault(rel,{'relative_path':rel,'pack':pack_from_path(rel)})
+                result[rel].update(recognition_status='unreadable',error=row.get('reason',''))
     return result
 
 
@@ -89,11 +136,11 @@ def measure_metadata(path):
     return {'duration_seconds': round(duration, 6), 'sample_rate': sample_rate, 'channels': channels}
 
 
-def refresh_ledger(root, files):
+def refresh_ledger(root, files, metadata_root=None):
     """Refresh only new/changed files, preserving all old columns and rows, including missing files."""
     from concurrent.futures import ThreadPoolExecutor
     root = Path(root)
-    ledger = root / LEDGER_NAME
+    ledger = Path(metadata_root or root) / LEDGER_NAME
     rows, fields = [], []
     if ledger.exists():
         with ledger.open(encoding='utf-8-sig', newline='') as source:

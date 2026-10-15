@@ -105,11 +105,11 @@ def main():
                 check('unchanged waveform uses its disk cache without decoding the source',
                       sound_browser.Library(root).waveform('quiet.wav')['peaks'] == wave['peaks'])
             # The first list may need to fill one missing cache; warm it and prove subsequent lists never decode.
-            lib.waveform('loud.wav')
+            for sound in root.glob('*.wav'):lib.waveform(sound.name)
             with patch.object(audio_visuals, '_analyse', side_effect=AssertionError('list decoded unchanged file')):
                 status, payload = request('/api/data')
             check('list carries cached row waveforms without source decoding', status == 200
-                  and set(payload['waveforms']) == {'quiet.wav', 'loud.wav'} and cache.stat().st_mtime_ns == stamp)
+                  and set(payload['waveforms']) == {'quiet.wav','loud.wav','event.wav','silent.wav','stereo.wav'} and cache.stat().st_mtime_ns == stamp)
             original = (root / 'quiet.wav').stat()
             sf.write(root / 'quiet.wav', tone * .2, sr, subtype='FLOAT')
             os.utime(root / 'quiet.wav', ns=(original.st_atime_ns, original.st_mtime_ns + 1000000))

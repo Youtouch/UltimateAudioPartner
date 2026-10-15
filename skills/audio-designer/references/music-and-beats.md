@@ -2,7 +2,6 @@
 
 Use when a cut has to follow music, or when a reference video's sound has to be described: where the beats fall, which passages are loud or quiet, where the track rises or drops. An agent cannot hear. [audio_map.py](../scripts/audio_map.py) measures instead, and the numbers are enough to place cuts.
 
-Status: **ran on 2026-10-07** with librosa 1.0.0, Python 3.12 and FFmpeg 9.0.2 on Windows. The self-test (120 BPM clicks, quiet then loud) passed. A synthetic 30-second MP4 with a 128 BPM pulse, a quiet first 8 seconds and a quieter last 8 was read through FFmpeg: 65 beats covering the whole file, section boundaries at 8.01 s and 21.59 s against true changes at 8 s and 22 s. **No real music track has been analysed yet**, so the section and hit output on dense material is unproven. Treat the first real run as the test and check it against the user's ear.
 
 Dependencies: Python with `librosa` (`pip install librosa`), and `ffmpeg` on PATH to decode files. If librosa is missing, name the dependency and ask; do not install it unasked. The rest of the pack works without it.
 

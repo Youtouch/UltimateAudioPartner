@@ -10,7 +10,7 @@ You cannot hear. Every claim about a sound rests on one of three kinds of eviden
 | Evidence | Source | Proves |
 |---|---|---|
 | **Measured** | `audio_describe.py` (every file: trimmed length, LUFS, true peak, attack, decay, brightness, pitch, onsets, loop seam, clipping), `audio_index.py`, `audio_map.py`, FFmpeg meters | Length, loudness, peaks, shape, bands, density, beats. Not what the sound is. |
-| **Recognised** | `scripts/audio_tag.py` (AudioSet labels per 10 s, CLAP ranking) | What a model hears in it, with a probability. A reading, not a listen. |
+| **Recognised** | `scripts/audio_tag.py` (AudioSet labels per 10 s, CLAP ranking), category candidates | Model evidence about a source. AudioSet scores and CLAP similarities have different scales; a rank is not a probability or a listen. |
 | **Judged** | The user's ear, recorded in the project profile | Whether it fits. Only this settles taste. |
 
 A filename or folder is a fourth, weaker kind: a guess. Never write "contains birds" from a name.
@@ -23,8 +23,8 @@ Read [recognise-and-select.md](references/recognise-and-select.md). In short:
 
 1. Turn the request into a brief: role, character, prominence, how often it plays, timing, what plays with it, hard constraints.
 2. Shortlist from the library's ledger and indexes by name (cheap), then **recognise** the shortlist with `audio_tag.py tag` and **measure** it with `audio_index.py show`. Drop a file when a label positively contradicts the brief (a calm track tagged `Choir` or `Chant`); when an expected label is merely missing (a "jungle" bed with no bird or frog label), keep it as doubtful and say so. A missing label is not an absence.
-3. For a descriptive brief ("soft playful click") over a tagged library, run `audio_search.py find`: it ranks by three sources separately (the audio fingerprint, the cleaned file name, the AudioSet labels as confirmation only) and merges them, so a file several sources agree on comes first. Read each result's per-source ranks: a file found by the name alone or the audio alone is weaker evidence than one found by both. For loose files, `audio_tag.py rank` compares audio only. Either way a rank orders candidates; it is not taste.
-   Plain words in a query ("short punchy bright click", "loopable rain") are filters on the library's measured descriptors (`AUDIO_DESCRIPTORS.csv`, the WORDS table in `audio_describe.py`), not text for the fingerprint: state a character as one of those words with the measured value behind it ("punchy: attack 3 ms, crest 16 dB").
+3. For category requests run `audio_search.py find`. Recognized UCS categories, families and personal aliases return every catalogue candidate; `--top` does not truncate categories. Read each candidate's sources. Candidates are uncalibrated; names and model agreement cannot establish listening precision.
+   Measured words such as `short`, `punchy` and `bright` put descriptor matches first within the category set; visible browser filters can narrow the view. State the measured value behind a character ("punchy: attack 3 ms, crest 16 dB"). A query without a recognized category uses the existing ranking of audio, cleaned names and AudioSet evidence. For loose files, `audio_tag.py rank` compares audio only. A rank orders candidates; it is not taste.
    For a sound a game plays repeatedly, offer a variation set's most different takes (`sfx_groups.py varied`), and never offer two copies of one file: `AUDIO_GROUPS.csv` lists duplicates and the copy to keep.
 4. Return at most three candidates as audiocards, with the exact excerpt (start/end), or say **no suitable match**. Never pad a shortlist.
 
@@ -40,11 +40,13 @@ Read [mix-plan.md](references/mix-plan.md) before rendering anything with more t
 
 ## Hand off
 
-Per sound: file, excerpt, role, the three kinds of evidence (labels with probabilities, key measurements, any past verdict), gain and cue time, and **listening pending**. After the user listens, record the verdict and its reason in the project profile, so the next choice starts from it.
+Per sound: file, excerpt, role, the three kinds of evidence (model labels and their scores, key measurements, any past verdict), gain and cue time, and **listening pending**. After the user listens, record the verdict and its reason in the project profile, so the next choice starts from it.
 
 ## The user's browser
 
 `python scripts/sound_browser.py --root <library>` opens a local page where the user browses the library by tag, kind, pack and length, searches by description, finds "more like this", and auditions with the arrow keys. Their likes, rejects and notes land in `AUDIO_VERDICTS.json` in the library root: **read it as judged evidence** before proposing a sound, and never re-propose a rejected file. The browser’s **More like my approved** view ranks from saved likes and rejects; its optional Avoid field starts empty. Each file also has **More like this** alongside audio-only similarity. To hand the user a shortlist, give paths they can paste into the name filter.
+
+The UCS tree opens parent categories or exact CatIDs and shows source candidates as likely and uncalibrated, with stale evidence identified. **Check this category** offers up to 20 source candidates, preferring source disagreement; older catalogues restrict samples to TRAIN packs. Y/N answers save locally for the specific file and CatID in `AUDIO_VERDICTS.json`, separately from likes and rejects. The answer rate describes only the targeted examples answered; it does not estimate precision or recall across the library. Saving an answer does not fit a classifier.
 
 Each readable row shows a cached whole-file peak envelope; click it to seek. Opening a sound shows its spectrogram and measured numbers. The descriptor pass precomputes envelopes in `AUDIO_VISUALS/`; source size, nanosecond modification time and cache version invalidate changes. Spectrograms are cached on first open. Up/down moves and plays, Space pauses, A approves, R rejects and S finds more like the current sound; Explain shows these shortcuts.
 
@@ -59,6 +61,9 @@ python scripts/audio_tag.py tag clip.wav other.mp3
 python scripts/audio_tag.py tag --root <library> --only "*animals*" --out tags.csv
 python scripts/audio_tag.py rank "gentle wooden click" a.wav b.wav c.wav
 python scripts/audio_search.py find --root <library> "a wooden click" --top 20
+python tagging/ucs.py resolve "short bright click"
+python tagging/ucs.py alias --root <library> --word blip --catid UIClick
+python tagging/recall_tags.py query --root <library> "UI" --precision 0.9
 python scripts/audio_tag.py check
 python scripts/audio_describe.py describe --root <library>     # measured descriptors, resumable, no model
 python scripts/audio_describe.py show clip.wav                  # one file's measures and plain words
@@ -73,10 +78,14 @@ python scripts/export_sfx.py --root <library> --list picks.txt --out <game folde
 
 **Searching by words.** The sound word of a query leads: in "a single soft wooden click" it is "click", and "soft" or "wooden" only refine. Describing words alone pull toward the wrong files ("soft" finds near-silence), so write the sound first. `audio_search.py names` caches each cleaned file name's text vector in `AUDIO_NAMES_clap.npz` beside the tags; it updates itself for new names.
 
+**Category words.** `tagging/ucs_mapping.json` contains the official UCS 8.2.1 identities and synonyms, with authored AudioSet correspondences, four prompts per subcategory and search aliases. The source and field provenance are recorded in the JSON; unsupported AudioSet correspondences stay explicitly unmapped. One book synonym is omitted by the publication privacy filter; every official CatID remains. Exact CatIDs, parent names and related families such as `click`, `footstep`, `coin/pickup` and `button/UI select` resolve hierarchically. Game pickup and UI-selection intent use UIMisc as an explicit approximation. UCS has no footstep surface CatIDs. Save personal words with `ucs.py alias`, repeating `--catid` for several identities. It atomically updates only `AUDIO_CATEGORY_ALIASES.json`, retains other words and merges an existing word's IDs. Longest whole-word phrases win; personal aliases affect retrieval, never benchmark truth.
+
 **Searching by example.** When the user has approved or rejected sounds, `audio_search.py like --root <library> --approved <path part> ... --rejected <path part> ... --avoid "Choir|Sing|Speech|Organ|Voice|Lyric" --min-seconds 60` ranks the library by audio closeness to what was approved, penalises closeness to what was rejected, and drops any file whose name or labels match `--avoid`. A verdict is the strongest evidence there is: start a pick from it rather than from words.
 
-**Studio tags with agreement.** `tagging/vocab_tags.py build --root <library>` writes `AUDIO_VOCAB_TAGS.csv`: per file and canonical tag, which sources support it (name, model label, audio). Two or more sources make a tag worth stating; one source is a candidate to verify, never a fact. `disagreements` lists the files where sources contradict each other: offer those for a listen before anything else. Rebuild it after a tagging or relabel pass.
+**Vocabulary tags with agreement.** `tagging/vocab_tags.py build --root <library>` writes `AUDIO_VOCAB_TAGS.csv`: per file and canonical tag, which sources support it (name, model label, audio). Multiple sources supply provenance; they do not establish measured precision. Outputs from the same encoder are correlated evidence. Missing model labels do not establish absence. `disagreements` lists conflicting evidence for listening review. Rebuild after a tagging or relabel pass.
 
-**Judging a change to search or tagging.** `bench/` holds a reviewed-clip benchmark and `bench_eval.py`: run a method against it before and after, on the dev split while tuning and on test once. Until the clips are reviewed by ear it scores against file names (PROXY), which flatters name-based methods; say so with any number.
+## Category catalogue
+
+Build a model-free category catalogue with `python tagging/recall_tags.py build --root <library>`. It uses UCS filename references and existing model labels, keeps every candidate, and never claims calibrated precision. See the public tagging guide for limits. **Check this category** saves Y/N answers locally; names and recognition remain separate from listening judgements.
 
 Needs `torch`, `torchaudio` and `transformers`; the models (CED-base for AudioSet labels, LAION CLAP for search) download to the Hugging Face cache on first use. CED runs code from its model page, pinned to a reviewed revision; `AUDIO_TAGGER=ast` switches back to the older AST tagger. Every tags row records its `tagger`. `relabel` re-labels an existing tags file with the current tagger, keeping fingerprints; `reembed` silence-pads short files' fingerprints (a looped 0.4 s click reads as a rattle). GPU when present, CPU otherwise. The library pass resumes on unchanged size/mtime, writes full-duration metadata to `AUDIO_LEDGER_files.csv` while retaining existing columns and rows, and ends with tagged/unchanged/skipped counts. `AUDIO_TAGS_skipped.csv` records unreadable files and reasons each run. Recognition uses the first 60 seconds; fingerprints the first 10. Readers without a ledger report that fallback durations describe only the tagged span.

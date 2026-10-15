@@ -1,12 +1,17 @@
 # Changelog
 
-Changes are grouped by capability, newest first within each group. Dates and commit IDs come from the repository history. Unreleased work is listed separately so it is not confused with a published revision.
+Changes are grouped by capability, newest first within each group. Dates and commit IDs come from the repository history. Each release lists what it adds on top of the dated history below.
 
-## Unreleased
+## 1.0.0 · 2026-10-15
+
+First tagged release. It includes everything in the dated history below, plus:
 
 - Browser: cached waveform previews, a seekable playhead, spectrograms, keyboard review and side-by-side loudness-matched comparisons.
 - Getting started: a generated demo library, browser screenshots and complete command-line help.
-- Documentation: a measurement-and-evidence walkthrough and the completed CED-base trial result.
+- Documentation: a measurement-and-evidence walkthrough and user-facing category limits.
+- Categories: UCS search, aliases, a model-free source catalogue and local Y/N checks.
+- Reliability: explicit unreadable, short and silent rows; separate caches for read-only libraries.
+- Publication: research tools, private benchmarks and datasets stay local.
 
 ## Search and library browsing
 
